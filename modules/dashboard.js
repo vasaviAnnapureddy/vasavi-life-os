@@ -10,8 +10,9 @@ function renderDashboard() {
   var lsMsg   = lifeScoreMessage(ls);
 
   /* Today's sessions */
-  var todaySessions = (state.sessions || []).filter(function(s) {
-    return new Date(s.start).toDateString() === todayString();
+  var allSessions = state.sessions || state.focusSessions || [];
+  var todaySessions = allSessions.filter(function(s) {
+    return s.start && new Date(s.start).toDateString() === new Date().toDateString();
   });
   var todayMins = todaySessions.reduce(function(a, s) {
     return a + s.duration;
@@ -47,15 +48,12 @@ function renderDashboard() {
       }, 0) / state.books.length)
     : 0;
 
-  var projPct = (state.projectPhases || []).length > 0
-    ? pct(
-        (state.projectPhases || []).filter(function(p) { return p.done; }).length,
-        state.projectPhases.length
-      )
-    : 0;
+  var projPhases = state.projectPhases || [];
+  var projPct = projPhases.length > 0 ? pct(projPhases.filter(function(p){return p.done;}).length, projPhases.length) : 0;
 
   /* Pending goals */
-  var pendingGoals = (state.goals.daily || []).filter(function(g) {
+  var goalsDaily = (state.goals && state.goals.daily) ? state.goals.daily : (Array.isArray(state.goals) ? state.goals : []);
+  var pendingGoals = goalsDaily.filter(function(g) {
     return !g.done;
   }).length;
 
@@ -144,7 +142,7 @@ function renderDashboard() {
         'MOST IMPORTANT TODAY' +
       '</div>' +
       '<input id="one-thing-input" ' +
-        'value="' + escHtml(state.planner.focus || '') + '" ' +
+        'value="' + escHtml((state.planner && state.planner.focus) || state.todayFocus || '') + '" ' +
         'placeholder="What is your ONE thing today?" ' +
         'style="background:transparent;border:none;font-size:13px;' +
                'font-weight:700;color:#f0f0ff;padding:0;width:100%;" />' +

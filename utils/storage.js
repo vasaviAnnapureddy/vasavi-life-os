@@ -11,6 +11,12 @@ var STORAGE_KEY = 'vasavi_life_os_v2';
 var DEFAULT_STATE = {
   /* Core */
   currentPage:     'dashboard',
+
+  /* Planner — always an object */
+  planner: {
+    date: '', mood: '', focus: '', blocks: [],
+    workingOn: '', reflection: { well:'', better:'', tomorrow:'' }
+  },
   startDate:       new Date().toISOString().split('T')[0],
   lifeScore:       0,
 
