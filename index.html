@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vasavi's Life OS</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#7c3aed" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Life OS" />
+
+  <!-- Firebase SDKs — FREE Spark plan -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#7c3aed" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Life OS" />
+</head>
+<body>
+
+  <!-- HAMBURGER + OVERLAY FOR MOBILE -->
+  <button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="logo-area">
+      <div class="logo">Vasavi's Life OS</div>
+      <div class="logo-sub">Personal Operating System v1.0</div>
+    </div>
+
+    <div class="day-pill">
+      Day <span id="day-number">1</span> &mdash; <span id="today-date"></span>
+    </div>
+
+    <div class="nav-section">Core</div>
+    <div class="nav-item" data-page="dashboard">Dashboard</div>
+    <div class="nav-item" data-page="planner">Daily Planner</div>
+    <div class="nav-item" data-page="timer">Focus Timer</div>
+    <div class="nav-item" data-page="goals">Goals OS</div>
+
+    <div class="nav-section">Study</div>
+    <div class="nav-item" data-page="dsroad">10-Day DS Roadmap</div>
+    <div class="nav-item" data-page="interview">Interview Prep</div>
+    <div class="nav-item" data-page="project">Project Tracker</div>
+
+    <div class="nav-section">Knowledge</div>
+    <div class="nav-item" data-page="learning">Learning OS</div>
+    <div class="nav-item" data-page="language">Language OS</div>
+    <div class="nav-item" data-page="books">Books</div>
+
+    <div class="nav-section">Health</div>
+    <div class="nav-item" data-page="habits">Habits + Health</div>
+    <div class="nav-item" data-page="gym">Gym Planner</div>
+
+    <div class="nav-section">Life & Finance</div>
+    <div class="nav-item" data-page="finance">Finance OS</div>
+    <div class="nav-item" data-page="savings">Savings</div>
+    <div class="nav-item" data-page="jobs">Job Tracker</div>
+    <div class="nav-item" data-page="resume">Resume Builder</div>
+    <div class="nav-item" data-page="travel">Travel OS</div>
+
+    <div class="nav-section">Reflect</div>
+    <div class="nav-item" data-page="notes">Rich Notes</div>
+    <div class="nav-item" data-page="journal">Journal + Talk</div>
+    <div class="nav-item" data-page="analytics">Analytics</div>
+    <div class="nav-item" data-page="ai">AI Assistant</div>
+
+    <div class="sidebar-footer">Built for Vasavi</div>
+  </div>
+
+  <!-- MAIN AREA -->
+  <div id="main">
+
+    <!-- TOP BAR -->
+    <div id="topbar">
+      <div class="topbar-left">
+        <h1 id="page-title">Dashboard</h1>
+        <div id="page-subtitle">Your life at a glance</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn-ghost" id="btn-backup">Backup</button>
+        <button class="btn-ghost" id="btn-restore">Restore</button>
+        <button class="btn-primary" id="btn-add">+ Add</button>
+      </div>
+    </div>
+
+    <!-- PAGE CONTENT -->
+    <div id="content">
+      <p style="color:#888; padding:40px;">Loading...</p>
+    </div>
+
+  </div>
+
+  <!-- MODAL -->
+  <div id="modal-overlay" class="hidden">
+    <div id="modal-box">
+      <div id="modal-title">Add Item</div>
+      <div id="modal-body"></div>
+      <div id="modal-footer">
+        <button class="btn-ghost" id="btn-modal-cancel">Cancel</button>
+        <button class="btn-primary" id="btn-modal-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HIDDEN FILE INPUT FOR RESTORE -->
+  <input type="file" id="restore-file-input" accept=".json" style="display:none;" />
+
+  <!-- LOAD UTILITIES FIRST -->
+  <script src="utils/helpers.js"></script>
+  <script src="utils/notifications.js"></script>
+  <script src="utils/storage.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="utils/ai_api.js"></script>
+
+  <!-- LOAD DATA FILES -->
+  <script src="data/ds_days.js"></script>
+  <script src="data/mindmap_r1.js"></script>
+  <script src="data/mindmap_r2.js"></script>
+  <script src="data/mindmap_r3.js"></script>
+  <script src="data/mindmap_r4.js"></script>
+  <script src="data/mindmap_r5.js"></script>
+  <script src="data/mindmap_r6.js"></script>
+  <script src="data/mindmap_r7.js"></script>
+  <script src="data/interview_qs.js"></script>
+  <script src="data/learn_tree.js"></script>
+  <script src="data/gym_plan.js"></script>
+  <script src="data/jobs_list.js"></script>
+
+  <!-- LOAD MODULES -->
+  <script src="modules/dashboard.js"></script>
+  <script src="modules/planner.js"></script>
+  <script src="modules/timer.js"></script>
+  <script src="modules/goals.js"></script>
+  <script src="modules/dsroad.js"></script>
+  <script src="modules/interview.js"></script>
+  <script src="modules/project.js"></script>
+  <script src="modules/learning.js"></script>
+  <script src="modules/language.js"></script>
+  <script src="modules/books.js"></script>
+  <script src="modules/habits.js"></script>
+  <script src="modules/gym.js"></script>
+  <script src="modules/finance.js"></script>
+  <script src="modules/savings.js"></script>
+  <script src="modules/jobs.js"></script>
+  <script src="modules/resume.js"></script>
+  <script src="modules/travel.js"></script>
+  <script src="modules/notes.js"></script>
+  <script src="modules/journal.js"></script>
+  <script src="modules/analytics.js"></script>
+  <script src="modules/ai.js"></script>
+
+  <!-- MOBILE SIDEBAR JS -->
+  <script>
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebar-overlay').classList.toggle('show');
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('show');
+  }
+  /* Close sidebar when nav item clicked on mobile */
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.nav-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        if (window.innerWidth <= 768) closeSidebar();
+      });
+    });
+  });
+  </script>
+
+  <!-- REGISTER SERVICE WORKER — offline support -->
+  <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/sw.js').then(function(reg) {
+        console.log('SW registered:', reg.scope);
+      }).catch(function(err) {
+        console.log('SW failed:', err);
+      });
+    });
+  }
+  </script>
+
+  <!-- INIT FIREBASE + NOTIFICATIONS -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      if (typeof initFirebase === 'function') initFirebase();
+      if (typeof initNotifications === 'function') initNotifications();
+    });
+  </script>
+
+  <!-- LOAD CORE APP LAST -->
+  <script src="app.js"></script>
+
+</body>
+</html>
