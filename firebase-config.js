@@ -24,7 +24,7 @@ var FB_READY    = false;
 function initFirebase() {
   try {
     if (typeof firebase === 'undefined') {
-      console.warn('Firebase SDK not loaded yet — using localStorage only');
+      console.warn('Firebase SDK not loaded — using localStorage only');
       return;
     }
     if (!firebase.apps || firebase.apps.length === 0) {
@@ -32,24 +32,12 @@ function initFirebase() {
     } else {
       firebaseApp = firebase.apps[0];
     }
-    firebaseDb   = firebase.firestore();
-    firebaseAuth = firebase.auth();
-    FB_READY     = true;
-    console.log('Firebase ready — Spark plan, free forever');
-
-    /* Auto sign-in anonymously so we can use Firestore */
-    firebaseAuth.onAuthStateChanged(function(user) {
-      if (user) {
-        currentUser = user;
-        console.log('Firebase user:', user.uid);
-        /* Sync from cloud on first load */
-        syncFromFirebase();
-      } else {
-        firebaseAuth.signInAnonymously().catch(function(e) {
-          console.warn('Firebase auth failed:', e.message, '— using localStorage');
-        });
-      }
-    });
+    firebaseDb = firebase.firestore();
+    FB_READY   = true;
+    /* Use fixed user ID — no auth needed since rules are open */
+    currentUser = { uid: 'vasavi-main-user' };
+    console.log('Firebase ready — connecting to Firestore');
+    syncFromFirebase();
   } catch(e) {
     console.warn('Firebase init failed:', e.message, '— using localStorage');
     FB_READY = false;
