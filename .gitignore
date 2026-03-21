@@ -1,0 +1,17 @@
+# Environment variables - NEVER push this
+backend/.env
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+backend/__pycache__/
+
+# Node
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
