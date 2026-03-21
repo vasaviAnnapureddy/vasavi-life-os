@@ -102,7 +102,7 @@ function fireNotification(title, body, icon) {
 /* ============================================
    GOOGLE CALENDAR INTEGRATION
    ============================================ */
-var GCAL_CLIENT_ID = ''; /* Fill after Google Cloud setup */
+var GCAL_CLIENT_ID = '595073630861-snttmo3is2tq99t1pltnv1tg1urf9eh3.apps.googleusercontent.com';
 var GCAL_API_KEY   = ''; /* Fill after Google Cloud setup */
 var GCAL_SCOPE     = 'https://www.googleapis.com/auth/calendar.events';
 var gCalReady      = false;
