@@ -394,10 +394,8 @@ function renderLangTutor(state, langs) {
   h += '</div>';
 
   h += '<div style="display:flex;gap:8px;">';
-  h += '<button class="voice-listen-btn" onclick="startLangVoice(\'' + l.id + '\')" style="padding:8px 12px;border-radius:8px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer;font-size:13px;flex-shrink:0;">🎤</button>';
-  h += '<input id="tutor-input" placeholder="Ask your ' + escHtml(l.name) + ' tutor anything..." style="flex:1;" onkeydown="if(event.key===\'Enter\')sendTutorFromInput()" />';
+  h += '<input id="tutor-input" placeholder="Type or use voice conversation below..." style="flex:1;" onkeydown="if(event.key===\'Enter\')sendTutorFromInput()" />';
   h += '<button class="btn-primary" onclick="sendTutorFromInput()">Ask</button>';
-  h += '<button onclick="toggleAutoSpeak()" id="auto-speak-btn" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card2);cursor:pointer;font-size:13px;flex-shrink:0;" title="Auto-speak AI responses">🔊</button>';
   h += '</div>';
   if (tutorMsgs.length > 0) h += '<div style="text-align:right;margin-top:4px;"><span onclick="clearTutorChat()" style="font-size:10px;color:#556080;cursor:pointer;">Clear chat</span></div>';
   h += '</div>';
@@ -652,6 +650,53 @@ function addCustomLang() {
    VOICE FUNCTIONS FOR LANGUAGE TUTOR
    ============================================ */
 var autoSpeak = false;
+
+function toggleLangConversation(langId) {
+  if (typeof conversationMode !== 'undefined' && conversationMode) {
+    stopConversation();
+    return;
+  }
+  var state = window.AppState;
+  var langs = getAllLangs(state);
+  var l = langs.find(function(x){ return x.id === (langId || state.langActive); }) || langs[0];
+  var speechLang = (typeof SPEECH_LANGS !== 'undefined' && SPEECH_LANGS[l ? l.name : 'English']) || 'en-US';
+
+  if (typeof startConversation !== 'function') {
+    showToast('Add speech.js to utils/ folder first', 'error');
+    return;
+  }
+
+  showToast('Voice conversation started! Speak now 🎤');
+
+  startConversation(speechLang, function(userText) {
+    /* User spoke — show it in chat */
+    if (!window.AppState.langTutorMsgs) window.AppState.langTutorMsgs = [];
+    window.AppState.langTutorMsgs.push({ role:'user', text:userText });
+    saveData();
+    renderPage();
+
+    /* Get AI response */
+    if (typeof askLanguageTutor === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+      askLanguageTutor(l ? l.name : 'Korean', userText, window.AppState.langTutorMsgs, function(reply) {
+        window.AppState.langTutorMsgs.push({ role:'ai', text:reply });
+        saveData();
+        renderPage();
+        /* AI speaks → then auto-listens again */
+        if (typeof speakAIResponse === 'function') {
+          speakAIResponse(reply, speechLang);
+        }
+      });
+    } else {
+      var reply = buildTutorReply(userText, l ? l.name : 'Korean');
+      window.AppState.langTutorMsgs.push({ role:'ai', text:reply });
+      saveData();
+      renderPage();
+      if (typeof speakAIResponse === 'function') {
+        speakAIResponse(reply, speechLang);
+      }
+    }
+  });
+}
 
 function startLangVoice(langId) {
   var state = window.AppState;
