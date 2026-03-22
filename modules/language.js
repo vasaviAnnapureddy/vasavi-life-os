@@ -333,7 +333,9 @@ function renderLangNotebook(state, langs) {
 function renderLangTutor(state, langs) {
   var h = '';
   var selLang = state.langTutorLang || Object.keys(langs)[0] || 'en';
-  var tutorMsgs = state.langTutorMsgs || [];
+  /* langTutorMsgs might be object or array — normalise to array */
+  var rawMsgs = state.langTutorMsgs;
+  var tutorMsgs = Array.isArray(rawMsgs) ? rawMsgs : [];
   var l = langs[selLang] || { name: selLang, flag: '🌐', color: '#a855f7' };
 
   /* Language selector */
