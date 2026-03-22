@@ -356,26 +356,37 @@ function sendTopicMsg(key, msg) {
   window.AppState.topicMsgs[key].push({ role:'user', text:msg });
   saveData();
 
-  var ot     = window.AppState.learnOpenTopic;
+  var ot       = window.AppState.learnOpenTopic;
   var allRoots = getLoadedRoots();
-  var root   = allRoots.find(function(r){ return r.id === ot.rootId; });
-  var branch = root && root.branches.find(function(b){ return b.id === ot.branchId; });
-  var topic  = branch ? branch.topics[ot.topicIdx] : '';
-  var level  = (window.AppState.topicLevels||{})[key] || 0;
+  var root     = allRoots.find(function(r){ return r.id === ot.rootId; });
+  var branch   = root && root.branches.find(function(b){ return b.id === ot.branchId; });
+  var topic    = branch ? branch.topics[ot.topicIdx] : '';
+  var level    = (window.AppState.topicLevels||{})[key] || 0;
 
   var ld = document.getElementById('topic-loading');
   if (ld) ld.style.display = 'block';
 
-  var reply = buildTopicReply(msg, topic, root ? root.root : '', level);
-
-  setTimeout(function() {
-    var ld2 = document.getElementById('topic-loading');
-    if (ld2) ld2.style.display = 'none';
-    window.AppState.topicMsgs[key].push({ role:'ai', text:reply });
-    saveData();
-    renderPage();
-    setTimeout(function(){ var el=document.getElementById('topic-msgs'); if(el) el.scrollTop=el.scrollHeight; }, 100);
-  }, 700);
+  /* Use real Claude API if key exists, else fallback */
+  if (typeof askTopicAI === 'function' && getApiKey()) {
+    askTopicAI(topic, root ? root.root : '', level, msg, function(reply) {
+      var ld2 = document.getElementById('topic-loading');
+      if (ld2) ld2.style.display = 'none';
+      window.AppState.topicMsgs[key].push({ role:'ai', text:reply });
+      saveData();
+      renderPage();
+      setTimeout(function(){ var el=document.getElementById('topic-msgs'); if(el) el.scrollTop=el.scrollHeight; }, 100);
+    });
+  } else {
+    var reply = buildTopicReply(msg, topic, root ? root.root : '', level);
+    setTimeout(function() {
+      var ld2 = document.getElementById('topic-loading');
+      if (ld2) ld2.style.display = 'none';
+      window.AppState.topicMsgs[key].push({ role:'ai', text:reply });
+      saveData();
+      renderPage();
+      setTimeout(function(){ var el=document.getElementById('topic-msgs'); if(el) el.scrollTop=el.scrollHeight; }, 100);
+    }, 700);
+  }
 }
 
 function buildTopicReply(msg, topic, rootName, level) {

@@ -394,8 +394,10 @@ function renderLangTutor(state, langs) {
   h += '</div>';
 
   h += '<div style="display:flex;gap:8px;">';
+  h += '<button class="voice-listen-btn" onclick="startLangVoice(\'' + l.id + '\')" style="padding:8px 12px;border-radius:8px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer;font-size:13px;flex-shrink:0;">🎤</button>';
   h += '<input id="tutor-input" placeholder="Ask your ' + escHtml(l.name) + ' tutor anything..." style="flex:1;" onkeydown="if(event.key===\'Enter\')sendTutorFromInput()" />';
   h += '<button class="btn-primary" onclick="sendTutorFromInput()">Ask</button>';
+  h += '<button onclick="toggleAutoSpeak()" id="auto-speak-btn" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card2);cursor:pointer;font-size:13px;flex-shrink:0;" title="Auto-speak AI responses">🔊</button>';
   h += '</div>';
   if (tutorMsgs.length > 0) h += '<div style="text-align:right;margin-top:4px;"><span onclick="clearTutorChat()" style="font-size:10px;color:#556080;cursor:pointer;">Clear chat</span></div>';
   h += '</div>';
@@ -531,24 +533,40 @@ function sendTutorFromInput() {
 }
 
 function sendTutorMsg(msg) {
-  if(!window.AppState.langTutorMsgs) window.AppState.langTutorMsgs=[];
-  window.AppState.langTutorMsgs.push({role:'user',content:msg});
-  saveData(); renderPage();
-  var ld=document.getElementById('tutor-loading');
-  if(ld) ld.style.display='block';
+  var state = window.AppState;
+  if (!state.langTutorMsgs) state.langTutorMsgs = [];
+  if (!Array.isArray(state.langTutorMsgs)) state.langTutorMsgs = [];
+  state.langTutorMsgs.push({ role:'user', text:msg });
+  saveData();
 
-  var langs = getLangs(window.AppState);
-  var lang  = langs[window.AppState.langTutorLang||'en']||{name:'English'};
-  var reply = getTutorReply(msg, lang.name, window.AppState);
+  var langs = getAllLangs(state);
+  var l = langs.find(function(x){ return x.id === state.langActive; }) || langs[0];
 
-  setTimeout(function(){
-    var ld2=document.getElementById('tutor-loading');
-    if(ld2) ld2.style.display='none';
-    window.AppState.langTutorMsgs.push({role:'tutor',content:reply});
-    saveData(); renderPage();
-    setTimeout(function(){var el=document.getElementById('tutor-msgs');if(el)el.scrollTop=el.scrollHeight;},100);
-  }, 600);
+  var ld = document.getElementById('tutor-loading');
+  if (ld) ld.style.display = 'block';
+
+  if (typeof askLanguageTutor === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+    askLanguageTutor(l ? l.name : 'Korean', msg, state.langTutorMsgs, function(reply) {
+      var ld2 = document.getElementById('tutor-loading');
+      if (ld2) ld2.style.display = 'none';
+      state.langTutorMsgs.push({ role:'ai', text:reply });
+      speakTutorResponse(reply);
+      saveData(); renderPage();
+      setTimeout(function(){ var el=document.getElementById('tutor-msgs'); if(el) el.scrollTop=el.scrollHeight; },100);
+    });
+  } else {
+    var reply = buildTutorReply(msg, l ? l.name : 'Korean');
+    setTimeout(function() {
+      var ld2 = document.getElementById('tutor-loading');
+      if (ld2) ld2.style.display = 'none';
+      state.langTutorMsgs.push({ role:'ai', text:reply });
+      speakTutorResponse(reply);
+      saveData(); renderPage();
+      setTimeout(function(){ var el=document.getElementById('tutor-msgs'); if(el) el.scrollTop=el.scrollHeight; },100);
+    }, 600);
+  }
 }
+
 
 function getTutorReply(msg, langName, state) {
   var t = msg.toLowerCase();
@@ -628,6 +646,47 @@ function addCustomLang() {
   if (nameEl) nameEl.value='';
   if (flagEl) flagEl.value='';
   saveData(); renderPage();
+}
+
+/* ============================================
+   VOICE FUNCTIONS FOR LANGUAGE TUTOR
+   ============================================ */
+var autoSpeak = false;
+
+function startLangVoice(langId) {
+  var state = window.AppState;
+  var langs = getAllLangs(state);
+  var l     = langs.find(function(x){ return x.id === (langId || state.langActive); }) || langs[0];
+  var speechLang = (typeof SPEECH_LANGS !== 'undefined' && SPEECH_LANGS[l.name]) || 'en-US';
+
+  if (typeof startListening === 'function') {
+    startListening(function(text) {
+      var input = document.getElementById('tutor-input');
+      if (input) input.value = text;
+      sendTutorMsg(text);
+    }, speechLang);
+  } else {
+    showToast('Add speech.js to index.html first', 'error');
+  }
+}
+
+function toggleAutoSpeak() {
+  autoSpeak = !autoSpeak;
+  var btn = document.getElementById('auto-speak-btn');
+  if (btn) {
+    btn.style.background = autoSpeak ? '#10b981' : 'var(--card2)';
+    btn.style.color      = autoSpeak ? '#fff' : '';
+  }
+  showToast(autoSpeak ? '🔊 AI will speak responses' : '🔇 Auto-speak off');
+}
+
+function speakTutorResponse(text) {
+  if (!autoSpeak) return;
+  var state = window.AppState;
+  var langs = getAllLangs(state);
+  var l = langs.find(function(x){ return x.id === state.langActive; }) || langs[0];
+  var speechLang = (typeof SPEECH_LANGS !== 'undefined' && SPEECH_LANGS[l.name]) || 'en-US';
+  if (typeof speakText === 'function') speakText(text, speechLang);
 }
 
 console.log('language.js loaded OK');
