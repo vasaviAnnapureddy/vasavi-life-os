@@ -115,20 +115,28 @@ function processUserSpeech(audioBlob) {
          || '';
 
   if (!key) {
-    /* Wait for Firebase to load key */
-    setConvStatus('🔑 Loading key from Firebase...', '#f59e0b');
+    setConvStatus('🔑 Loading key...', '#f59e0b');
     setTimeout(function() { processUserSpeech(audioBlob); }, 2000);
     return;
   }
 
   if (typeof groqSpeechToText !== 'function') {
-    setConvStatus('❌ Page not fully loaded — please refresh once', '#ef4444');
+    setConvStatus('❌ Refresh page once', '#ef4444');
     return;
   }
 
+  /* Log audio info for debugging */
+  console.log('Audio blob:', audioBlob.size, 'bytes, type:', audioBlob.type);
+  setConvStatus('🔄 Sending to Groq Whisper (' + Math.round(audioBlob.size/1024) + 'KB)...', '#a855f7');
+
   groqSpeechToText(audioBlob, function(text, err) {
-    if (err || !text || text.trim() === '') {
-      setConvStatus('❌ Could not hear clearly — tap Speak and try again', '#ef4444');
+    console.log('Whisper result:', text, 'error:', err);
+    if (err) {
+      setConvStatus('❌ Error: ' + err, '#ef4444');
+      return;
+    }
+    if (!text || text.trim() === '') {
+      setConvStatus('❌ No speech detected — speak louder and try again', '#ef4444');
       return;
     }
     setConvStatus('💬 You said: "' + text + '"', '#a855f7');
