@@ -401,8 +401,28 @@ function renderLangTutor(state, langs) {
   });
   h += '</div>';
 
+  /* Voice conversation button - BIG and clear */
+  var isConvOn = (typeof convActive !== 'undefined' && convActive);
+  h += '<div style="margin-bottom:10px;">';
+  h += '<button onclick="toggleLangConversation(\'' + l.id + '\')" ';
+  h += 'style="width:100%;padding:14px;border-radius:12px;border:2px solid #a855f7;';
+  h += 'background:' + (isConvOn ? '#a855f7' : '#1a0533') + ';';
+  h += 'color:' + (isConvOn ? '#fff' : '#a855f7') + ';';
+  h += 'cursor:pointer;font-size:14px;font-weight:700;">';
+  h += (isConvOn ? '⏹ End Conversation' : '🎙️ Start Voice Conversation');
+  h += '</button>';
+  h += '</div>';
+
+  /* Record button - shows after conversation started */
+  h += '<div style="display:flex;gap:8px;margin-bottom:10px;">';
+  h += '<button onclick="toggleRecord()" ';
+  h += 'style="padding:12px 20px;border-radius:10px;border:2px solid #ef4444;background:#1a0000;color:#ef4444;cursor:pointer;font-size:13px;font-weight:700;flex-shrink:0;">🎤 Speak</button>';
+  h += '<div class="conv-status" style="flex:1;padding:10px;font-size:11px;color:#8899bb;background:#0d0d1a;border-radius:8px;display:flex;align-items:center;">Tap Speak to talk</div>';
+  h += '</div>';
+
+  /* Text input */
   h += '<div style="display:flex;gap:8px;">';
-  h += '<input id="tutor-input" placeholder="Type or use voice conversation below..." style="flex:1;" onkeydown="if(event.key===\'Enter\')sendTutorFromInput()" />';
+  h += '<input id="tutor-input" placeholder="Or type here..." style="flex:1;" onkeydown="if(event.key===\'Enter\')sendTutorFromInput()" />';
   h += '<button class="btn-primary" onclick="sendTutorFromInput()">Ask</button>';
   h += '</div>';
   if (tutorMsgs.length > 0) h += '<div style="text-align:right;margin-top:4px;"><span onclick="clearTutorChat()" style="font-size:10px;color:#556080;cursor:pointer;">Clear chat</span></div>';
@@ -660,50 +680,47 @@ function addCustomLang() {
 var autoSpeak = false;
 
 function toggleLangConversation(langId) {
+  /* Stop if already running */
   if (typeof convActive !== 'undefined' && convActive) {
-    stopVoiceConversation();
-    return;
+    if (typeof stopVoiceConversation === 'function') stopVoiceConversation();
+    renderPage(); return;
   }
+
   var state = window.AppState;
   var langs = getAllLangs(state);
   var l = langs.find(function(x){ return x.id === (langId || state.langActive); }) || langs[0];
-  var speechLang = (typeof SPEECH_LANGS !== 'undefined' && SPEECH_LANGS[l ? l.name : 'English']) || 'en-US';
+  if (!l) return;
 
-  if (typeof startConversation !== 'function') {
-    showToast('Add speech.js to utils/ folder first', 'error');
-    return;
-  }
-
-  showToast('Voice conversation started! Speak now 🎤');
-
-  startVoiceConversation(l ? l.name : 'English', function(userText) {
-    /* User spoke — show it in chat */
-    if (!window.AppState.langTutorMsgs) window.AppState.langTutorMsgs = [];
-    window.AppState.langTutorMsgs.push({ role:'user', text:userText });
-    saveData();
-    renderPage();
-
-    /* Get AI response */
-    if (typeof askLanguageTutor === 'function' && typeof getApiKey === 'function' && getApiKey()) {
-      askLanguageTutor(l ? l.name : 'Korean', userText, window.AppState.langTutorMsgs, function(reply) {
-        window.AppState.langTutorMsgs.push({ role:'ai', text:reply });
-        saveData();
-        renderPage();
-        /* AI speaks back */
-        if (typeof aiSpeak === 'function') {
-          aiSpeak(reply, l ? l.name : 'English', null);
-        }
-      });
-    } else {
-      var reply = buildTutorReply(userText, l ? l.name : 'Korean');
-      window.AppState.langTutorMsgs.push({ role:'ai', text:reply });
+  /* Start voice conversation */
+  if (typeof startVoiceConversation === 'function') {
+    startVoiceConversation(l.name, function(userText) {
+      /* User spoke — save and show */
+      if (!window.AppState.langTutorMsgs) window.AppState.langTutorMsgs = [];
+      window.AppState.langTutorMsgs.push({ role:'user', text: userText });
       saveData(); renderPage();
-      if (typeof aiSpeak === 'function') {
-        aiSpeak(reply, l ? l.name : 'English', null);
+
+      /* Get AI response */
+      if (typeof askLanguageTutor === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+        askLanguageTutor(l.name, userText, window.AppState.langTutorMsgs, function(reply) {
+          window.AppState.langTutorMsgs.push({ role:'ai', text: reply });
+          saveData(); renderPage();
+          /* AI speaks back */
+          if (typeof aiSpeak === 'function') aiSpeak(reply, l.name, null);
+          else if (typeof speakResponse === 'function') speakResponse(reply, 'en-US', null);
+        });
+      } else {
+        var reply = buildTutorReply(userText, l.name);
+        window.AppState.langTutorMsgs.push({ role:'ai', text: reply });
+        saveData(); renderPage();
+        if (typeof aiSpeak === 'function') aiSpeak(reply, l.name, null);
       }
-    }
-  });
+    });
+    renderPage();
+  } else {
+    showToast('Speech module not loaded. Refresh the page.', 'error');
+  }
 }
+
 
 function startLangVoice(langId) {
   var state = window.AppState;

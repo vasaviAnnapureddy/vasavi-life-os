@@ -2,6 +2,7 @@
    VASAVI'S LIFE OS - AI ASSISTANT MODULE
    modules/ai.js
    Uses Claude API — reads ALL app data
+   Version: 2.0 — with API key input
    ============================================ */
 
 function renderAI() {

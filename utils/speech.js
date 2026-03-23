@@ -6,7 +6,7 @@
    Orpheus speaks → mic opens → repeat
    ============================================ */
 
-var MediaRecorder_   = window.MediaRecorder;
+/* MediaRecorder is accessed directly */
 var convActive       = false;
 var convStream       = null;
 var convRecorder     = null;
@@ -23,7 +23,7 @@ var SPEECH_LANGS     = {
    START FULL VOICE CONVERSATION
    ============================================ */
 function startVoiceConversation(langName, onUserSpoke) {
-  if (!MediaRecorder_) { showToast('Voice not supported — use Chrome','error'); return; }
+  if (!window.MediaRecorder) { showToast('Voice not supported — use Chrome browser','error'); return; }
   convActive   = true;
   convLang     = SPEECH_LANGS[langName] || 'en-US';
   convCallback = onUserSpoke;
@@ -61,7 +61,7 @@ function startRecording() {
   navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
     convStream  = stream;
     convChunks  = [];
-    convRecorder = new MediaRecorder_(stream);
+    convRecorder = new window.MediaRecorder(stream);
 
     convRecorder.ondataavailable = function(e) {
       if (e.data.size > 0) convChunks.push(e.data);
@@ -151,23 +151,28 @@ function updateConvBtn(active) {
 
 function updateRecordBtn(recording) {
   document.querySelectorAll('.record-btn').forEach(function(btn) {
-    btn.style.background = recording ? '#ef4444' : '#1a0533';
+    btn.style.background = recording ? '#ef4444' : '#1a0000';
+    btn.style.border = recording ? '2px solid #ff6666' : '2px solid #ef4444';
     btn.style.color = '#fff';
-    btn.textContent = recording ? '⏹ Stop' : '🎤 Speak';
+    btn.innerHTML = recording ? '⏹ Stop Recording' : '🎤 Speak';
   });
+  _isRecording = recording;
 }
 
 function setConvStatus(msg, color) {
   document.querySelectorAll('.conv-status').forEach(function(el) {
     el.textContent = msg;
     if (color) el.style.color = color;
+    el.style.display = 'flex';
   });
+  /* Also log to console for debugging */
+  if (msg) console.log('Voice status:', msg);
 }
 
 /* Single tap toggle for record button */
 var _isRecording = false;
 function toggleRecord() {
-  if (!convActive) { showToast('Start conversation first','error'); return; }
+  /* Works even without conversation mode */
   if (_isRecording) {
     _isRecording = false;
     stopRecording();

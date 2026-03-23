@@ -572,17 +572,17 @@ function setupDayDisplay() {
    INIT
    ============================================ */
 function init() {
-  loadData();
-  setupDayDisplay();
-  setupEvents();
-  if (typeof initNotifications === 'function') initNotifications();
-  if (typeof initFirebase === 'function') initFirebase();
+  try { loadData(); } catch(e) { window.AppState = {}; console.warn('loadData error:', e); }
+  try { setupDayDisplay(); } catch(e) { console.warn('setupDayDisplay error:', e); }
+  try { setupEvents(); } catch(e) { console.warn('setupEvents error:', e); }
+  try { if (typeof initFirebase === 'function') initFirebase(); } catch(e) { console.warn('Firebase error:', e); }
+  try { if (typeof initNotifications === 'function') initNotifications(); } catch(e) { console.warn('Notifications error:', e); }
 
-  var startPage = window.AppState.currentPage || 'dashboard';
-  goToPage(startPage);
-  setupPageEvents();
+  var startPage = (window.AppState && window.AppState.currentPage) || 'dashboard';
+  try { goToPage(startPage); } catch(e) { console.warn('goToPage error:', e); goToPage('dashboard'); }
+  try { setupPageEvents(); } catch(e) { console.warn('setupPageEvents error:', e); }
 
-  console.log('app.js loaded OK - Vasavi Life OS ready!');
+  console.log('Vasavi Life OS ready!');
 }
 
 if (document.readyState === 'loading') {
