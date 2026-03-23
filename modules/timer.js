@@ -133,6 +133,7 @@ function renderSessionHeatmap(state) {
   h += '<div class="card-header">Weekly Focus Heatmap</div>';
   h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">';
 
+  var allSessions = (window.AppState.sessions || window.AppState.focusSessions || []);
   var days    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var now     = new Date();
   var todayD  = now.getDay();

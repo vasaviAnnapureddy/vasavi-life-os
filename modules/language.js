@@ -22,6 +22,14 @@ function getLangs(state) {
   return Object.assign({}, DEFAULT_LANGS, custom);
 }
 
+/* getAllLangs returns array version for .find() calls */
+function getAllLangs(state) {
+  var obj = getLangs(state || window.AppState);
+  return Object.keys(obj).map(function(id) {
+    return Object.assign({ id: id }, obj[id]);
+  });
+}
+
 /* ============================================
    MAIN RENDER
    ============================================ */
