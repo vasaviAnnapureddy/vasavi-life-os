@@ -61,7 +61,16 @@ function startRecording() {
   navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
     convStream  = stream;
     convChunks  = [];
-    convRecorder = new window.MediaRecorder(stream);
+    /* Use best supported format */
+    var options = {};
+    if (window.MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      options = { mimeType: 'audio/webm;codecs=opus' };
+    } else if (window.MediaRecorder.isTypeSupported('audio/webm')) {
+      options = { mimeType: 'audio/webm' };
+    } else if (window.MediaRecorder.isTypeSupported('audio/ogg')) {
+      options = { mimeType: 'audio/ogg' };
+    }
+    convRecorder = new window.MediaRecorder(stream, options);
 
     convRecorder.ondataavailable = function(e) {
       if (e.data.size > 0) convChunks.push(e.data);
@@ -70,7 +79,8 @@ function startRecording() {
     convRecorder.onstop = function() {
       stream.getTracks().forEach(function(t){ t.stop(); });
       if (!convActive) return;
-      var blob = new Blob(convChunks, { type:'audio/webm' });
+      var mtype = convRecorder.mimeType || 'audio/webm';
+      var blob = new Blob(convChunks, { type: mtype });
       if (blob.size < 1000) {
         setConvStatus('🎤 Too short — try again', '#f59e0b');
         return;

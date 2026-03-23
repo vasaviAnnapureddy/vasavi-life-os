@@ -20,7 +20,8 @@ function groqSpeechToText(audioBlob, onDone) {
   if (!key) { onDone('', 'No API key'); return; }
 
   var form = new FormData();
-  form.append('file', audioBlob, 'audio.webm');
+  var ext = (audioBlob.type || '').includes('ogg') ? 'ogg' : 'webm';
+  form.append('file', audioBlob, 'recording.' + ext);
   form.append('model', 'whisper-large-v3-turbo');
   /* No language specified — auto-detect Korean or English */
   form.append('response_format', 'text');
