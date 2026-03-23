@@ -101,18 +101,33 @@ function stopRecording() {
    ============================================ */
 function processUserSpeech(audioBlob) {
   /* Step 1: Groq Whisper — speech to text */
-  if (typeof groqSpeechToText === 'function') {
+  if (typeof groqSpeechToText === 'function' && typeof getApiKey === 'function') {
+    /* Make sure key is loaded from Firebase before calling */
+    var key = getApiKey();
+    if (!key && typeof loadGroqKeyFromFirebase === 'function') {
+      loadGroqKeyFromFirebase();
+      setTimeout(function() { processUserSpeech(audioBlob); }, 1500);
+      setConvStatus('🔑 Loading AI key...', '#f59e0b');
+      return;
+    }
     groqSpeechToText(audioBlob, function(text, err) {
       if (err || !text) {
-        /* Fallback: browser speech recognition */
-        setConvStatus('❌ Could not hear — try again', '#ef4444');
+        setConvStatus('❌ Could not hear clearly — try again', '#ef4444');
         return;
       }
       setConvStatus('💬 You said: "' + text + '"', '#a855f7');
       if (convCallback) convCallback(text);
     });
   } else {
-    setConvStatus('❌ AI API not loaded', '#ef4444');
+    /* Try again in 1 second - scripts might still be loading */
+    setTimeout(function() {
+      if (typeof groqSpeechToText === 'function') {
+        processUserSpeech(audioBlob);
+      } else {
+        setConvStatus('❌ Refresh page and try again', '#ef4444');
+      }
+    }, 1000);
+    setConvStatus('⏳ Loading AI...', '#f59e0b');
   }
 }
 
