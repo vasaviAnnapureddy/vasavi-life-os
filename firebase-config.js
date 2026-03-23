@@ -34,14 +34,55 @@ function initFirebase() {
     }
     firebaseDb = firebase.firestore();
     FB_READY   = true;
-    /* Use fixed user ID — no auth needed since rules are open */
     currentUser = { uid: 'vasavi-main-user' };
     console.log('Firebase ready — connecting to Firestore');
     syncFromFirebase();
+    /* Load Groq key from Firestore config document */
+    loadGroqKeyFromFirebase();
   } catch(e) {
     console.warn('Firebase init failed:', e.message, '— using localStorage');
     FB_READY = false;
   }
+}
+
+/* ============================================
+   LOAD GROQ KEY FROM FIREBASE
+   Store key once in Firebase, loads everywhere
+   Phone, laptop, any device — always works
+   ============================================ */
+function loadGroqKeyFromFirebase() {
+  if (!firebaseDb) return;
+  firebaseDb.collection('config').doc('keys').get()
+    .then(function(doc) {
+      if (doc.exists && doc.data().groqKey) {
+        /* Key found in Firebase — set it globally */
+        window.GROQ_KEY_FROM_FIREBASE = doc.data().groqKey;
+        if (!window.AppState) window.AppState = {};
+        if (!window.AppState.anthropicKey) {
+          window.AppState.anthropicKey = doc.data().groqKey;
+        }
+        console.log('Groq key loaded from Firebase ✅');
+      }
+    })
+    .catch(function(e) {
+      console.warn('Could not load key from Firebase:', e.message);
+    });
+}
+
+/* ============================================
+   SAVE GROQ KEY TO FIREBASE (call once)
+   After this, all devices load it automatically
+   ============================================ */
+function saveGroqKeyToFirebase(key) {
+  if (!firebaseDb || !key) return;
+  firebaseDb.collection('config').doc('keys').set({ groqKey: key })
+    .then(function() {
+      console.log('Groq key saved to Firebase — all devices will load it now ✅');
+      showToast('Key saved to Firebase — works on all devices forever! ✅');
+    })
+    .catch(function(e) {
+      console.warn('Could not save key to Firebase:', e.message);
+    });
 }
 
 /* ============================================
