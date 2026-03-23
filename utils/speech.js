@@ -100,35 +100,30 @@ function stopRecording() {
    PROCESS: audio → text → AI → voice
    ============================================ */
 function processUserSpeech(audioBlob) {
-  /* Step 1: Groq Whisper — speech to text */
-  if (typeof groqSpeechToText === 'function' && typeof getApiKey === 'function') {
-    /* Make sure key is loaded from Firebase before calling */
-    var key = getApiKey();
-    if (!key && typeof loadGroqKeyFromFirebase === 'function') {
-      loadGroqKeyFromFirebase();
-      setTimeout(function() { processUserSpeech(audioBlob); }, 1500);
-      setConvStatus('🔑 Loading AI key...', '#f59e0b');
+  var key = (window.AppState && window.AppState.anthropicKey)
+         || window.GROQ_KEY_FROM_FIREBASE
+         || '';
+
+  if (!key) {
+    /* Wait for Firebase to load key */
+    setConvStatus('🔑 Loading key from Firebase...', '#f59e0b');
+    setTimeout(function() { processUserSpeech(audioBlob); }, 2000);
+    return;
+  }
+
+  if (typeof groqSpeechToText !== 'function') {
+    setConvStatus('❌ Page not fully loaded — please refresh once', '#ef4444');
+    return;
+  }
+
+  groqSpeechToText(audioBlob, function(text, err) {
+    if (err || !text || text.trim() === '') {
+      setConvStatus('❌ Could not hear clearly — tap Speak and try again', '#ef4444');
       return;
     }
-    groqSpeechToText(audioBlob, function(text, err) {
-      if (err || !text) {
-        setConvStatus('❌ Could not hear clearly — try again', '#ef4444');
-        return;
-      }
-      setConvStatus('💬 You said: "' + text + '"', '#a855f7');
-      if (convCallback) convCallback(text);
-    });
-  } else {
-    /* Try again in 1 second - scripts might still be loading */
-    setTimeout(function() {
-      if (typeof groqSpeechToText === 'function') {
-        processUserSpeech(audioBlob);
-      } else {
-        setConvStatus('❌ Refresh page and try again', '#ef4444');
-      }
-    }, 1000);
-    setConvStatus('⏳ Loading AI...', '#f59e0b');
-  }
+    setConvStatus('💬 You said: "' + text + '"', '#a855f7');
+    if (convCallback) convCallback(text);
+  });
 }
 
 /* ============================================
