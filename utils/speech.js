@@ -1,196 +1,140 @@
 /* ============================================
    VASAVI'S LIFE OS — VOICE CONVERSATION
    utils/speech.js
-
-   Real back-and-forth voice conversation:
-   You speak → AI listens → AI speaks back → repeat
-   Like talking to a real person
+   Full phone-call style conversation:
+   You speak → Groq hears → LLaMA thinks →
+   Orpheus speaks → mic opens → repeat
    ============================================ */
 
-var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-var speechSynth       = window.speechSynthesis;
-var recognizer        = null;
-var isListening       = false;
-var isSpeaking        = false;
-var conversationMode  = false;
-var currentLang       = 'en-US';
-var onVoiceResult     = null;
-
-var SPEECH_LANGS = {
-  'Korean':  'ko-KR',
-  'English': 'en-US',
-  'Hindi':   'hi-IN',
-  'Tamil':   'ta-IN',
-  'Telugu':  'te-IN',
-  'Japanese':'ja-JP'
+var MediaRecorder_   = window.MediaRecorder;
+var convActive       = false;
+var convStream       = null;
+var convRecorder     = null;
+var convChunks       = [];
+var convLang         = 'en-US';
+var convCallback     = null;
+var convSpeaking     = false;
+var SPEECH_LANGS     = {
+  'Korean':'ko-KR','English':'en-US','Hindi':'hi-IN',
+  'Tamil':'ta-IN','Telugu':'te-IN','Japanese':'ja-JP'
 };
 
 /* ============================================
-   CONVERSATION MODE — full back and forth
-   You speak → AI responds → AI speaks →
-   automatically listens again → repeat
+   START FULL VOICE CONVERSATION
    ============================================ */
-function startConversation(lang, onUserSpoke) {
-  if (!SpeechRecognition) {
-    showToast('Voice not supported — use Chrome browser', 'error');
-    return;
-  }
-  conversationMode = true;
-  currentLang      = lang || 'en-US';
-  onVoiceResult    = onUserSpoke;
+function startVoiceConversation(langName, onUserSpoke) {
+  if (!MediaRecorder_) { showToast('Voice not supported — use Chrome','error'); return; }
+  convActive   = true;
+  convLang     = SPEECH_LANGS[langName] || 'en-US';
+  convCallback = onUserSpoke;
   updateConvBtn(true);
-  listenOnce();
+  setConvStatus('🎤 Tap the button and speak...', '#10b981');
+  showToast('Voice conversation started! Tap mic to speak 🎤');
 }
 
-function stopConversation() {
-  conversationMode = false;
-  isListening      = false;
-  if (recognizer)    { try { recognizer.stop(); } catch(e){} }
-  if (speechSynth)   { speechSynth.cancel(); }
+function stopVoiceConversation() {
+  convActive = false;
+  if (convRecorder && convRecorder.state === 'recording') {
+    try { convRecorder.stop(); } catch(e){}
+  }
+  if (convStream) { convStream.getTracks().forEach(function(t){ t.stop(); }); convStream=null; }
+  if (typeof stopCurrentAudio === 'function') stopCurrentAudio();
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
   updateConvBtn(false);
+  setConvStatus('', '');
   showToast('Conversation ended');
 }
 
-function listenOnce() {
-  if (!conversationMode) return;
-  if (isSpeaking) return; /* wait for AI to finish speaking */
+/* ============================================
+   RECORD ONE UTTERANCE
+   User holds button or taps once
+   ============================================ */
+function startRecording() {
+  if (!convActive) return;
+  if (convSpeaking) {
+    /* Stop AI and let user speak */
+    if (typeof stopCurrentAudio === 'function') stopCurrentAudio();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    convSpeaking = false;
+  }
 
-  recognizer              = new SpeechRecognition();
-  recognizer.lang         = currentLang;
-  recognizer.continuous   = false;
-  recognizer.interimResults = false;
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+    convStream  = stream;
+    convChunks  = [];
+    convRecorder = new MediaRecorder_(stream);
 
-  recognizer.onstart = function() {
-    isListening = true;
-    setConvStatus('🎤 Listening... speak now', '#10b981');
-  };
+    convRecorder.ondataavailable = function(e) {
+      if (e.data.size > 0) convChunks.push(e.data);
+    };
 
-  recognizer.onresult = function(e) {
-    isListening      = false;
-    var text         = e.results[0][0].transcript;
-    setConvStatus('💭 You said: ' + text, '#a855f7');
-    if (onVoiceResult) onVoiceResult(text);
-    /* AI processes and speaks — then listenOnce() called again from speakAIResponse */
-  };
+    convRecorder.onstop = function() {
+      stream.getTracks().forEach(function(t){ t.stop(); });
+      if (!convActive) return;
+      var blob = new Blob(convChunks, { type:'audio/webm' });
+      if (blob.size < 1000) {
+        setConvStatus('🎤 Too short — try again', '#f59e0b');
+        return;
+      }
+      setConvStatus('💭 Processing...', '#a855f7');
+      processUserSpeech(blob);
+    };
 
-  recognizer.onerror = function(e) {
-    isListening = false;
-    if (e.error === 'no-speech' && conversationMode) {
-      setTimeout(listenOnce, 500); /* try again */
-    } else {
-      setConvStatus('❌ Error: ' + e.error + ' — tap mic to retry', '#ef4444');
-    }
-  };
+    convRecorder.start();
+    setConvStatus('🔴 Recording... tap Stop when done', '#ef4444');
+    updateRecordBtn(true);
 
-  recognizer.onend = function() {
-    isListening = false;
-  };
+  }).catch(function(e) {
+    showToast('Microphone error: '+e.message, 'error');
+    setConvStatus('❌ Microphone blocked', '#ef4444');
+  });
+}
 
-  try { recognizer.start(); }
-  catch(e) { console.warn('recognizer start error:', e); }
+function stopRecording() {
+  if (convRecorder && convRecorder.state === 'recording') {
+    convRecorder.stop();
+    updateRecordBtn(false);
+  }
 }
 
 /* ============================================
-   AI SPEAKS — then listens again automatically
+   PROCESS: audio → text → AI → voice
    ============================================ */
-function speakAIResponse(text, lang) {
-  if (!speechSynth || !text) {
-    /* No speech API — just listen again */
-    if (conversationMode) setTimeout(listenOnce, 500);
-    return;
+function processUserSpeech(audioBlob) {
+  /* Step 1: Groq Whisper — speech to text */
+  if (typeof groqSpeechToText === 'function') {
+    groqSpeechToText(audioBlob, function(text, err) {
+      if (err || !text) {
+        /* Fallback: browser speech recognition */
+        setConvStatus('❌ Could not hear — try again', '#ef4444');
+        return;
+      }
+      setConvStatus('💬 You said: "' + text + '"', '#a855f7');
+      if (convCallback) convCallback(text);
+    });
+  } else {
+    setConvStatus('❌ AI API not loaded', '#ef4444');
   }
+}
 
-  isSpeaking = true;
-  speechSynth.cancel();
-
-  /* Clean text */
-  var clean = text
-    .replace(/[#*`>\[\]]/g, '')
-    .replace(/\n+/g, '. ')
-    .substring(0, 400);
-
-  var utt   = new SpeechSynthesisUtterance(clean);
-  utt.lang  = lang || currentLang;
-  utt.rate  = 0.92;
-  utt.pitch = 1.05;
-
-  /* Pick best available voice */
-  var voices = speechSynth.getVoices();
-  var best   = voices.find(function(v) {
-    return v.lang === utt.lang && v.localService;
-  }) || voices.find(function(v) {
-    return v.lang.startsWith((utt.lang || 'en').split('-')[0]);
-  });
-  if (best) utt.voice = best;
-
+/* ============================================
+   AI SPEAKS — then user can speak again
+   ============================================ */
+function aiSpeak(text, langName, onDone) {
+  if (!convActive && !onDone) return;
+  convSpeaking = true;
   setConvStatus('🔊 AI speaking...', '#f59e0b');
 
-  utt.onend = function() {
-    isSpeaking = false;
-    /* After AI finishes speaking → automatically listen again */
-    if (conversationMode) {
-      setConvStatus('🎤 Your turn — speak now', '#10b981');
-      setTimeout(listenOnce, 600);
-    }
-  };
+  var langCode = SPEECH_LANGS[langName] || 'en-US';
 
-  utt.onerror = function() {
-    isSpeaking = false;
-    if (conversationMode) setTimeout(listenOnce, 500);
-  };
-
-  speechSynth.speak(utt);
-}
-
-/* ============================================
-   ONE-SHOT — single listen (non-conversation)
-   ============================================ */
-function startListening(onResult, lang) {
-  if (!SpeechRecognition) {
-    showToast('Voice not supported — use Chrome', 'error');
-    return;
+  if (typeof speakResponse === 'function') {
+    speakResponse(text, langCode, function() {
+      convSpeaking = false;
+      if (convActive) {
+        setConvStatus('🎤 Your turn — tap mic to speak', '#10b981');
+      }
+      if (onDone) onDone();
+    });
   }
-  if (isListening) { stopListening(); return; }
-
-  var r          = new SpeechRecognition();
-  r.lang         = lang || 'en-US';
-  r.continuous   = false;
-  r.interimResults = false;
-
-  r.onstart  = function() { isListening = true; updateVoiceBtns(true); };
-  r.onresult = function(e) {
-    isListening = false;
-    updateVoiceBtns(false);
-    if (onResult) onResult(e.results[0][0].transcript);
-  };
-  r.onerror  = function(e) { isListening = false; updateVoiceBtns(false); };
-  r.onend    = function() { isListening = false; updateVoiceBtns(false); };
-  r.start();
-}
-
-function stopListening() {
-  if (recognizer) try { recognizer.stop(); } catch(e){}
-  isListening = false;
-  updateVoiceBtns(false);
-}
-
-function speakText(text, lang, onDone) {
-  if (!speechSynth) { if(onDone) onDone(); return; }
-  speechSynth.cancel();
-  var utt   = new SpeechSynthesisUtterance(text.substring(0,300));
-  utt.lang  = lang || 'en-US';
-  utt.rate  = 0.92;
-  utt.onend = function() { if(onDone) onDone(); };
-  var voices = speechSynth.getVoices();
-  var best = voices.find(function(v){ return v.lang === utt.lang; });
-  if (best) utt.voice = best;
-  speechSynth.speak(utt);
-}
-
-function stopSpeaking() {
-  if (speechSynth) speechSynth.cancel();
-  isSpeaking = false;
-  if (conversationMode) setTimeout(listenOnce, 300);
 }
 
 /* ============================================
@@ -198,22 +142,18 @@ function stopSpeaking() {
    ============================================ */
 function updateConvBtn(active) {
   document.querySelectorAll('.conv-mode-btn').forEach(function(btn) {
-    if (active) {
-      btn.style.background = '#ef4444';
-      btn.style.color      = '#fff';
-      btn.textContent      = '⏹ End Conversation';
-    } else {
-      btn.style.background = '';
-      btn.style.color      = '';
-      btn.textContent      = '🎙️ Start Voice Conversation';
-    }
+    btn.style.background = active ? '#1a0533' : '';
+    btn.style.borderColor = active ? '#a855f7' : '';
+    btn.style.color = active ? '#a855f7' : '';
+    btn.textContent = active ? '⏹ End Conversation' : '🎙️ Start Voice Conversation';
   });
 }
 
-function updateVoiceBtns(listening) {
-  document.querySelectorAll('.voice-listen-btn').forEach(function(btn) {
-    btn.style.background = listening ? '#ef4444' : '';
-    btn.textContent      = listening ? '⏹ Stop' : '🎤 Speak';
+function updateRecordBtn(recording) {
+  document.querySelectorAll('.record-btn').forEach(function(btn) {
+    btn.style.background = recording ? '#ef4444' : '#1a0533';
+    btn.style.color = '#fff';
+    btn.textContent = recording ? '⏹ Stop' : '🎤 Speak';
   });
 }
 
@@ -224,4 +164,17 @@ function setConvStatus(msg, color) {
   });
 }
 
-console.log('speech.js loaded — Voice conversation ready');
+/* Single tap toggle for record button */
+var _isRecording = false;
+function toggleRecord() {
+  if (!convActive) { showToast('Start conversation first','error'); return; }
+  if (_isRecording) {
+    _isRecording = false;
+    stopRecording();
+  } else {
+    _isRecording = true;
+    startRecording();
+  }
+}
+
+console.log('speech.js loaded — Groq Voice Conversation ready');

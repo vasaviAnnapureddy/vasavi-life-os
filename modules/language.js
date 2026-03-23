@@ -377,12 +377,12 @@ function renderLangTutor(state, langs) {
     tutorMsgs.forEach(function(m) {
       if (m.role === 'user') {
         h += '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">';
-        h += '<div style="background:var(--accent);border-radius:10px 0 10px 10px;padding:10px 12px;font-size:12px;line-height:1.6;max-width:80%;color:#fff;">' + escHtml(m.content) + '</div>';
+        h += '<div style="background:var(--accent);border-radius:10px 0 10px 10px;padding:10px 12px;font-size:12px;line-height:1.6;max-width:80%;color:#fff;">' + escHtml(m.text || m.content || '') + '</div>';
         h += '</div>';
       } else {
         h += '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-start;">';
         h += '<span style="font-size:20px;flex-shrink:0;">' + l.flag + '</span>';
-        h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:10px 12px;font-size:12px;line-height:1.8;max-width:88%;white-space:pre-wrap;">' + escHtml(m.content) + '</div>';
+        h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:10px 12px;font-size:12px;line-height:1.8;max-width:88%;white-space:pre-wrap;">' + escHtml(m.text || m.content || '') + '</div>';
         h += '</div>';
       }
     });
@@ -660,8 +660,8 @@ function addCustomLang() {
 var autoSpeak = false;
 
 function toggleLangConversation(langId) {
-  if (typeof conversationMode !== 'undefined' && conversationMode) {
-    stopConversation();
+  if (typeof convActive !== 'undefined' && convActive) {
+    stopVoiceConversation();
     return;
   }
   var state = window.AppState;
@@ -676,7 +676,7 @@ function toggleLangConversation(langId) {
 
   showToast('Voice conversation started! Speak now 🎤');
 
-  startConversation(speechLang, function(userText) {
+  startVoiceConversation(l ? l.name : 'English', function(userText) {
     /* User spoke — show it in chat */
     if (!window.AppState.langTutorMsgs) window.AppState.langTutorMsgs = [];
     window.AppState.langTutorMsgs.push({ role:'user', text:userText });
@@ -689,18 +689,17 @@ function toggleLangConversation(langId) {
         window.AppState.langTutorMsgs.push({ role:'ai', text:reply });
         saveData();
         renderPage();
-        /* AI speaks → then auto-listens again */
-        if (typeof speakAIResponse === 'function') {
-          speakAIResponse(reply, speechLang);
+        /* AI speaks back */
+        if (typeof aiSpeak === 'function') {
+          aiSpeak(reply, l ? l.name : 'English', null);
         }
       });
     } else {
       var reply = buildTutorReply(userText, l ? l.name : 'Korean');
       window.AppState.langTutorMsgs.push({ role:'ai', text:reply });
-      saveData();
-      renderPage();
-      if (typeof speakAIResponse === 'function') {
-        speakAIResponse(reply, speechLang);
+      saveData(); renderPage();
+      if (typeof aiSpeak === 'function') {
+        aiSpeak(reply, l ? l.name : 'English', null);
       }
     }
   });
