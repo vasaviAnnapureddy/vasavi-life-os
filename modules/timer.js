@@ -141,7 +141,7 @@ function renderSessionHeatmap(state) {
     var dayDate  = new Date(now);
     dayDate.setDate(now.getDate() - todayD + i);
     var dateStr  = dayDate.toDateString();
-    var daySess  = (state.sessions || []).filter(function(s) {
+    var daySess  = allSessions.filter(function(s) {
       return new Date(s.start).toDateString() === dateStr;
     });
     var dayMins  = daySess.reduce(function(a, s) { return a + s.duration; }, 0);
@@ -260,6 +260,7 @@ function stopTimer() {
   ) || window.AppState.timerWhat;
 
   if (!window.AppState.sessions) window.AppState.sessions = [];
+  if (!window.AppState.focusSessions) window.AppState.focusSessions = window.AppState.sessions;
   window.AppState.sessions.push({
     start:    window.AppState.activeSess,
     end:      Date.now(),

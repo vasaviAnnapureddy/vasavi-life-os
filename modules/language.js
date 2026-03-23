@@ -734,4 +734,9 @@ function speakTutorResponse(text) {
   if (typeof speakText === 'function') speakText(text, speechLang);
 }
 
+/* Alias for compatibility */
+function buildTutorReply(msg, langName) {
+  return getTutorReply(msg, langName, window.AppState);
+}
+
 console.log('language.js loaded OK');
