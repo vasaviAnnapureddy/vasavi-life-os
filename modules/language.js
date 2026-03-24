@@ -560,8 +560,9 @@ function sendTutorFromInput() {
 
 function sendTutorMsg(msg) {
   var state = window.AppState;
-  if (!state.langTutorMsgs) state.langTutorMsgs = [];
-  if (!Array.isArray(state.langTutorMsgs)) state.langTutorMsgs = [];
+  if (!state.langTutorMsgs || !Array.isArray(state.langTutorMsgs)) {
+    state.langTutorMsgs = [];
+  }
   state.langTutorMsgs.push({ role:'user', text:msg });
   saveData();
 
@@ -694,8 +695,10 @@ function toggleLangConversation(langId) {
   /* Start voice conversation */
   if (typeof startVoiceConversation === 'function') {
     startVoiceConversation(l.name, function(userText) {
-      /* User spoke — save and show */
-      if (!window.AppState.langTutorMsgs) window.AppState.langTutorMsgs = [];
+      /* User spoke — save and show — ensure always array */
+      if (!window.AppState.langTutorMsgs || !Array.isArray(window.AppState.langTutorMsgs)) {
+        window.AppState.langTutorMsgs = [];
+      }
       window.AppState.langTutorMsgs.push({ role:'user', text: userText });
       saveData(); renderPage();
 
