@@ -37,16 +37,17 @@ function renderGoals() {
 
   /* ---- MAIN TAB BAR ---- */
   h += '<div class="subtab-bar" style="margin-bottom:14px;">';
+  h += '<div class="subtab ' + (tab === 'focus' ? 'active' : '') + '" ' +
+    'onclick="switchGoalTab(\'focus\')">🎯 Daily Focus</div>';
   h += '<div class="subtab ' + (tab === 'bytime' ? 'active' : '') + '" ' +
     'onclick="switchGoalTab(\'bytime\')">📅 By Time</div>';
   h += '<div class="subtab ' + (tab === 'bycat' ? 'active' : '') + '" ' +
     'onclick="switchGoalTab(\'bycat\')">🗂️ By Category</div>';
   h += '<div class="subtab ' + (tab === 'vision' ? 'active' : '') + '" ' +
     'onclick="switchGoalTab(\'vision\')">🌟 Vision</div>';
-  h += '<div class="subtab ' + (tab === 'calendar' ? 'active' : '') + '" ' +
-    'onclick="switchGoalTab(\'calendar\')">📆 Calendar</div>';
   h += '</div>';
 
+  if (tab === 'focus')    h += renderTodaysFocus(state);
   if (tab === 'bytime')   h += renderByTime(state);
   if (tab === 'bycat')    h += renderByCategory(state);
   if (tab === 'vision')   h += renderVision(state);
@@ -709,15 +710,24 @@ function addGoalInline(period) {
   var p = document.getElementById('goal-priority-select');
   var d = document.getElementById('goal-date-input');
   var tm= document.getElementById('goal-time-input');
-  if (!t || !t.value.trim()) { alert('Please enter a goal!'); return; }
+  if (!t || !t.value.trim()) { showToast('Please enter a goal!','error'); return; }
+  /* Ensure goals structure exists */
+  if (!window.AppState.goals) window.AppState.goals = {};
+  if (!window.AppState.goals[period]) window.AppState.goals[period] = [];
+  if (!Array.isArray(window.AppState.goals[period])) window.AppState.goals[period] = [];
+
   window.AppState.goals[period].push({
+    id:       Date.now(),
     text:     t.value.trim(),
     priority: p  ? p.value  : 'Medium',
     deadline: d  ? d.value  : '',
     time:     tm ? tm.value : '',
-    done:     false
+    done:     false,
+    createdAt: new Date().toISOString()
   });
+  t.value = '';
   saveData(); renderPage();
+  showToast('Goal added! ✅');
 }
 
 function toggleGoal(tab, idx) {
@@ -838,6 +848,93 @@ function exportToGCal(title, time, date) {
   } catch(e) {
     alert('Could not open Google Calendar. Check date and time.');
   }
+}
+
+/* ============================================
+   TODAY'S FOCUS — Hourly Planner
+   Write what you are doing every hour
+   ============================================ */
+function renderTodaysFocus(state) {
+  if (!state.hourlyFocus) state.hourlyFocus = {};
+  var today = new Date().toISOString().split('T')[0];
+  if (!state.hourlyFocus[today]) state.hourlyFocus[today] = {};
+  var todayHours = state.hourlyFocus[today];
+
+  var h = '';
+
+  /* Today's ONE Thing */
+  h += '<div class="card" style="margin-bottom:12px;">';
+  h += '<div class="card-header">⭐ Today\'s ONE Thing</div>';
+  h += '<input id="one-thing-focus" value="' + escHtml((state.planner && state.planner.focus) || '') + '" ';
+  h += 'placeholder="What is the ONE most important thing today?" ';
+  h += 'style="width:100%;font-size:14px;font-weight:700;" ';
+  h += 'onchange="saveOneThing(this.value)" />';
+  h += '</div>';
+
+  /* Hourly blocks */
+  h += '<div class="card">';
+  h += '<div class="card-header">📋 Hour by Hour — What are you doing?</div>';
+  h += '<div style="font-size:11px;color:#8899bb;margin-bottom:10px;">Tap any hour to write what you did or are doing</div>';
+
+  var hours = [
+    '5 AM','6 AM','7 AM','8 AM','9 AM','10 AM','11 AM',
+    '12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM',
+    '7 PM','8 PM','9 PM','10 PM'
+  ];
+
+  var nowHour = new Date().getHours();
+
+  hours.forEach(function(hr) {
+    var key = hr.replace(' ','').toLowerCase();
+    var val = todayHours[key] || '';
+    var hrNum = parseInt(hr);
+    var isPM = hr.includes('PM');
+    var h24 = isPM && hrNum !== 12 ? hrNum + 12 : (!isPM && hrNum === 12 ? 0 : hrNum);
+    var isNow = Math.abs(h24 - nowHour) <= 1;
+    var isDone = val.trim() !== '';
+
+    h += '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a35;">';
+    h += '<div style="width:52px;font-size:11px;font-weight:700;color:' + (isNow ? '#a855f7' : '#556080') + ';flex-shrink:0;">' + hr + '</div>';
+    h += '<div style="width:8px;height:8px;border-radius:50%;background:' + (isDone ? '#10b981' : isNow ? '#a855f7' : '#1a1a35') + ';flex-shrink:0;"></div>';
+    h += '<input value="' + escHtml(val) + '" placeholder="' + (isNow ? 'What are you doing right now?' : 'What did you do?') + '" ';
+    h += 'style="flex:1;font-size:12px;background:transparent;border:none;border-bottom:1px solid ' + (isNow ? '#a855f7' : '#1a1a35') + ';padding:2px 0;" ';
+    h += 'onchange="saveHourlyFocus(\'' + key + '\', this.value)" />';
+    h += '</div>';
+  });
+
+  h += '</div>';
+
+  /* Quick summary */
+  var filled = Object.keys(todayHours).filter(function(k){ return todayHours[k].trim(); }).length;
+  if (filled > 0) {
+    h += '<div class="card" style="margin-top:12px;">';
+    h += '<div class="card-header">📊 Today\'s Summary</div>';
+    h += '<div style="font-size:12px;color:#10b981;margin-bottom:8px;">' + filled + ' hours logged today ✅</div>';
+    Object.keys(todayHours).forEach(function(k) {
+      if (todayHours[k].trim()) {
+        h += '<div style="font-size:11px;padding:4px 0;color:#a0aec0;">' +
+          '<span style="color:#a855f7;font-weight:700;">' + k.toUpperCase() + '</span> — ' +
+          escHtml(todayHours[k]) + '</div>';
+      }
+    });
+    h += '</div>';
+  }
+
+  return h;
+}
+
+function saveOneThing(val) {
+  if (!window.AppState.planner) window.AppState.planner = {};
+  window.AppState.planner.focus = val;
+  saveData();
+}
+
+function saveHourlyFocus(hourKey, val) {
+  var today = new Date().toISOString().split('T')[0];
+  if (!window.AppState.hourlyFocus) window.AppState.hourlyFocus = {};
+  if (!window.AppState.hourlyFocus[today]) window.AppState.hourlyFocus[today] = {};
+  window.AppState.hourlyFocus[today][hourKey] = val;
+  saveData();
 }
 
 console.log('goals.js loaded OK');

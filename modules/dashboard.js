@@ -51,11 +51,14 @@ function renderDashboard() {
   var projPhases = state.projectPhases || [];
   var projPct = projPhases.length > 0 ? pct(projPhases.filter(function(p){return p.done;}).length, projPhases.length) : 0;
 
-  /* Pending goals */
-  var goalsDaily = (state.goals && state.goals.daily) ? state.goals.daily : (Array.isArray(state.goals) ? state.goals : []);
-  var pendingGoals = goalsDaily.filter(function(g) {
-    return !g.done;
-  }).length;
+  /* Pending goals — include all types */
+  var goalsDaily = (state.goals && state.goals.daily) ? state.goals.daily : [];
+  var goalsWeekly = (state.goals && state.goals.weekly) ? state.goals.weekly : [];
+  var pendingGoals = goalsDaily.filter(function(g){ return !g.done; }).length +
+                     goalsWeekly.filter(function(g){ return !g.done; }).length;
+  var doneGoals = goalsDaily.filter(function(g){ return g.done; }).length +
+                  goalsWeekly.filter(function(g){ return g.done; }).length;
+  var totalGoals = goalsDaily.length + goalsWeekly.length;
 
   /* Build HTML */
   var h = '';
@@ -234,6 +237,30 @@ function renderDashboard() {
   h += '</div>';
 
   return h;
+}
+
+function addDashQuickGoal() {
+  var el = document.getElementById('dash-quick-goal');
+  if (!el || !el.value.trim()) return;
+  if (!window.AppState.goals) window.AppState.goals = {};
+  if (!Array.isArray(window.AppState.goals.daily)) window.AppState.goals.daily = [];
+  window.AppState.goals.daily.push({
+    id: Date.now(),
+    text: el.value.trim(),
+    priority: 'Medium',
+    deadline: new Date().toISOString().split('T')[0],
+    done: false
+  });
+  el.value = '';
+  saveData(); renderPage();
+  showToast('Goal added! ✅');
+}
+
+function toggleDashQuickGoal(idx) {
+  var daily = window.AppState.goals && window.AppState.goals.daily;
+  if (!Array.isArray(daily) || !daily[idx]) return;
+  daily[idx].done = !daily[idx].done;
+  saveData(); renderPage();
 }
 
 console.log('dashboard.js loaded OK');
