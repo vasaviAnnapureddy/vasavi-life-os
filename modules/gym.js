@@ -3,11 +3,18 @@
    modules/gym.js
    ============================================ */
 
+/* Your OWN plan wins over the default plan.
+   Edit any day's exercises with ✏️ Customize. */
+function getGymPlan(day) {
+  var custom = (window.AppState.customGymPlan || {})[day];
+  return custom || GYM_PLAN[day] || { focus: 'REST DAY', exercises: [] };
+}
+
 function renderGym() {
   var state   = window.AppState;
   var gymTab  = state.gymTab || 'workout';
   var today   = todayName();
-  var plan    = GYM_PLAN[today] || { focus: 'REST DAY', exercises: [] };
+  var plan    = getGymPlan(today);
   var logged  = (state.gymLog || {})[todayString()] || false;
 
   var h = '';
@@ -34,9 +41,14 @@ function renderGym() {
   h += '</div>';
 
   /* Show selected day plan */
-  var viewPlan = GYM_PLAN[viewDay] || { focus: 'REST DAY', exercises: [] };
+  var viewPlan = getGymPlan(viewDay);
   if (viewDay !== today) {
     plan = viewPlan;
+  }
+
+  /* ---- EDIT MODE for this day's plan ---- */
+  if (state.gymEditDay === viewDay) {
+    return h + renderGymPlanEditor(state, viewDay);
   }
 
   /* ---- TODAY BANNER ---- */
@@ -71,7 +83,9 @@ function renderGym() {
   /* ---- TODAY EXERCISES ---- */
   if (plan.exercises && plan.exercises.length > 0) {
     h += '<div class="card" style="margin-bottom:14px;">';
-    h += '<div class="card-header">Today\'s Exercises</div>';
+    h += '<div class="card-header"><span>' + (viewDay===today?'Today\'s':escHtml(viewDay)) + ' Exercises' +
+      ((state.customGymPlan||{})[viewDay] ? ' <span style="font-size:9px;color:#10b981;">(your custom plan)</span>' : '') + '</span>' +
+      '<button class="btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="startGymEdit(\'' + viewDay + '\')">✏️ Customize</button></div>';
 
     plan.exercises.forEach(function(ex) {
       h += '<div style="background:var(--card2);border:1px solid var(--border);' +
@@ -107,7 +121,7 @@ function renderGym() {
 
   var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   days.forEach(function(day) {
-    var dayPlan  = GYM_PLAN[day];
+    var dayPlan  = getGymPlan(day);
     var isToday  = day === today;
     var isLogged = (state.gymLog || {})[todayString()] && isToday;
 
@@ -197,6 +211,108 @@ function logGym() {
   window.AppState.gymLog[todayString()] = true;
   saveData();
   renderPage();
+}
+
+/* ============================================
+   ✏️ GYM PLAN EDITOR — make each day YOURS
+   ============================================ */
+function renderGymPlanEditor(state, day) {
+  var plan = getGymPlan(day);
+  var isCustom = !!(state.customGymPlan||{})[day];
+  var h = '';
+
+  h += '<div class="card" style="margin-bottom:14px;border:1px solid #a855f7;">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  h += '<div style="font-size:15px;font-weight:800;">✏️ Editing ' + escHtml(day) + '\'s Plan</div>';
+  h += '<button class="btn-ghost" style="font-size:11px;" onclick="cancelGymEdit()">✕ Close</button>';
+  h += '</div>';
+
+  h += '<div class="form-row"><label>Focus (e.g. "Legs + Core", "Cardio Day", "REST DAY")</label>';
+  h += '<input id="gym-edit-focus" value="' + escHtml(plan.focus||'') + '" /></div>';
+
+  h += '<div style="font-size:11px;font-weight:700;color:#8899bb;margin:10px 0 6px;">EXERCISES</div>';
+  (plan.exercises||[]).forEach(function(ex, i) {
+    h += '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;">';
+    h += '<input id="gym-ex-name-' + i + '" value="' + escHtml(ex.name||'') + '" placeholder="Exercise name" style="flex:2;font-size:11px;" />';
+    h += '<input id="gym-ex-sets-' + i + '" value="' + escHtml(ex.sets||'') + '" placeholder="3 sets x 12 reps" style="flex:2;font-size:11px;" />';
+    h += '<input id="gym-ex-link-' + i + '" value="' + escHtml(ex.link||'') + '" placeholder="YouTube link (optional)" style="flex:2;font-size:11px;" />';
+    h += '<button onclick="gymEditRemoveEx(\'' + day + '\',' + i + ')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;">✕</button>';
+    h += '</div>';
+  });
+
+  h += '<button class="btn-ghost" style="width:100%;margin:8px 0;font-size:11px;" onclick="gymEditAddEx(\'' + day + '\')">+ Add Exercise</button>';
+
+  h += '<div style="display:flex;gap:8px;">';
+  h += '<button class="btn-primary" style="flex:1;" onclick="saveGymEdit(\'' + day + '\')">💾 Save ' + escHtml(day) + '\'s Plan</button>';
+  if (isCustom) h += '<button class="btn-ghost" onclick="resetGymDay(\'' + day + '\')">↺ Reset to Default</button>';
+  h += '</div>';
+  h += '<div style="font-size:10px;color:#556080;margin-top:8px;">Your custom plan is saved forever (Firebase). The default plan stays untouched — reset anytime.</div>';
+  h += '</div>';
+
+  return h;
+}
+
+function startGymEdit(day) {
+  window.AppState.gymViewDay = day;
+  window.AppState.gymEditDay = day;
+  saveData(); renderPage();
+}
+
+function cancelGymEdit() {
+  window.AppState.gymEditDay = null;
+  saveData(); renderPage();
+}
+
+/* Read current editor inputs into a plan object */
+function _readGymEditor(day) {
+  var plan = getGymPlan(day);
+  var focusEl = document.getElementById('gym-edit-focus');
+  var exercises = [];
+  (plan.exercises||[]).forEach(function(ex, i) {
+    var n = document.getElementById('gym-ex-name-' + i);
+    var s = document.getElementById('gym-ex-sets-' + i);
+    var l = document.getElementById('gym-ex-link-' + i);
+    /* Keep empty rows while editing; they are dropped on final save */
+    exercises.push({
+      name: n ? n.value.trim() : (ex.name||''),
+      sets: s ? s.value.trim() : (ex.sets||''),
+      link: l ? l.value.trim() : (ex.link||'')
+    });
+  });
+  return { focus: focusEl ? (focusEl.value.trim()||'REST DAY') : plan.focus, exercises: exercises };
+}
+
+function gymEditAddEx(day) {
+  var plan = _readGymEditor(day);
+  plan.exercises.push({ name:'', sets:'', link:'' });
+  if (!window.AppState.customGymPlan) window.AppState.customGymPlan = {};
+  window.AppState.customGymPlan[day] = plan;
+  saveData(); renderPage();
+}
+
+function gymEditRemoveEx(day, idx) {
+  var plan = _readGymEditor(day);
+  plan.exercises.splice(idx, 1);
+  if (!window.AppState.customGymPlan) window.AppState.customGymPlan = {};
+  window.AppState.customGymPlan[day] = plan;
+  saveData(); renderPage();
+}
+
+function saveGymEdit(day) {
+  var plan = _readGymEditor(day);
+  plan.exercises = plan.exercises.filter(function(ex){ return ex.name; });
+  if (!window.AppState.customGymPlan) window.AppState.customGymPlan = {};
+  window.AppState.customGymPlan[day] = plan;
+  window.AppState.gymEditDay = null;
+  saveData(); renderPage();
+  showToast('💪 ' + day + '\'s plan saved — it\'s yours now!');
+}
+
+function resetGymDay(day) {
+  if (!confirm('Reset ' + day + ' back to the default plan?')) return;
+  if (window.AppState.customGymPlan) delete window.AppState.customGymPlan[day];
+  window.AppState.gymEditDay = null;
+  saveData(); renderPage();
 }
 
 /* Tap a calendar day to log/unlog gym for that date

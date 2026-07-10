@@ -37,11 +37,20 @@ function groqSpeechToText(audioBlob, onDone) {
 }
 
 /* ============================================
-   STEP 2: TEXT → AI RESPONSE (Groq LLaMA)
+   STEP 2: TEXT → AI RESPONSE
+   Groq (free) by default. Paste a Claude API key
+   (starts with sk-ant-) instead and it upgrades
+   to real Claude automatically.
    ============================================ */
+function isClaudeKey() {
+  return getApiKey().indexOf('sk-ant-') === 0;
+}
+
 function groqChat(systemPrompt, messages, onDone) {
   var key = getApiKey();
-  if (!key) { onDone('Please add your Groq API key!'); return; }
+  if (!key) { onDone('Please add your API key in AI Assistant! (Groq free key or Claude sk-ant- key)'); return; }
+
+  if (isClaudeKey()) { claudeChat(systemPrompt, messages, onDone); return; }
 
   var msgs = [{ role:'system', content: systemPrompt }];
   messages.forEach(function(m) {
@@ -53,7 +62,7 @@ function groqChat(systemPrompt, messages, onDone) {
     headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
-      max_tokens: 300,
+      max_tokens: 800,
       temperature: 0.8,
       messages: msgs
     })
@@ -62,6 +71,37 @@ function groqChat(systemPrompt, messages, onDone) {
   .then(function(data) {
     if (data.choices && data.choices[0]) onDone(data.choices[0].message.content||'');
     else onDone('Error: '+(data.error&&data.error.message||'unknown'));
+  })
+  .catch(function(e) { onDone('Connection error: '+e.message); });
+}
+
+/* Real Claude — used automatically when key starts with sk-ant- */
+function claudeChat(systemPrompt, messages, onDone) {
+  var msgs = [];
+  messages.forEach(function(m) {
+    msgs.push({ role: m.role==='user'?'user':'assistant', content: m.text||m.content||'' });
+  });
+  if (msgs.length === 0) msgs.push({ role:'user', content:'Hello' });
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': getApiKey(),
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-5',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: msgs
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.content && data.content[0]) onDone(data.content[0].text||'');
+    else onDone('Claude error: '+(data.error&&data.error.message||'unknown'));
   })
   .catch(function(e) { onDone('Connection error: '+e.message); });
 }

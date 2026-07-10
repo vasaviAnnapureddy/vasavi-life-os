@@ -355,6 +355,7 @@ function buildAIContext() {
     'THIS WEEK — DAY BY DAY (use this for any weekly analysis):\n' +
     (weekLines || '  (no data this week yet)\n') +
     'Week totals: focus ' + weekTotal + ' mins (target 840), gym ' + gymWeek + ' days, spent ₹' + spendWeek + ', language practiced ' + langWeek + ' days\n\n' +
+    buildMoneyContext(state) + '\n' +
     'TONE RULES:\n' +
     '- Use her name "Vasavi" naturally\n' +
     '- Be warm but direct — mentor-friend who knows her\n' +
@@ -366,9 +367,63 @@ function buildAIContext() {
     '- Currency: Indian Rupees (₹)';
 }
 
+/* ============================================
+   FULL MONEY CONTEXT — so the AI truly knows
+   her income, spending and savings in detail
+   ============================================ */
+function buildMoneyContext(state) {
+  var now = new Date();
+  var out = 'MONEY — FULL DETAIL (income, spending, savings):\n';
+
+  /* Last 3 months: income vs expenses vs net */
+  for (var mo = 0; mo < 3; mo++) {
+    var m = now.getMonth() - mo, y = now.getFullYear();
+    if (m < 0) { m += 12; y--; }
+    var exp = (state.expenses||[]).filter(function(e){ var d=new Date(e.date||0); return !isNaN(d)&&d.getMonth()===m&&d.getFullYear()===y; });
+    var inc = (state.income||[]).filter(function(e){ var d=new Date(e.date||0); return !isNaN(d)&&d.getMonth()===m&&d.getFullYear()===y; });
+    var expTotal = exp.reduce(function(a,e){ return a+(e.amount||0); },0);
+    var incTotal = inc.reduce(function(a,e){ return a+(e.amount||0); },0);
+    var cats = {};
+    exp.forEach(function(e){ cats[e.cat||'Other']=(cats[e.cat||'Other']||0)+(e.amount||0); });
+    var catStr = Object.keys(cats).sort(function(a,b){return cats[b]-cats[a];})
+      .map(function(c){ return c+' ₹'+cats[c]; }).join(', ');
+    out += '- ' + AE_MONTHS_SHORT[m] + ' ' + y + ': income ₹' + incTotal + ', spent ₹' + expTotal +
+      ', net ' + (incTotal-expTotal>=0?'saved ₹'+(incTotal-expTotal):'OVERSPENT ₹'+(expTotal-incTotal)) +
+      (catStr ? '. Spending: ' + catStr : '') + '\n';
+  }
+
+  /* Savings goals */
+  var goals = state.savingsGoals || [];
+  if (goals.length) {
+    out += 'Savings goals:\n';
+    goals.forEach(function(g) {
+      out += '- ' + g.name + ': ₹' + (g.saved||0) + ' of ₹' + g.target +
+        ' (' + pct(g.saved||0, g.target||1) + '%)' + (g.date?' target date '+g.date:'') + '\n';
+    });
+  } else {
+    out += 'Savings goals: none set yet.\n';
+  }
+
+  /* Recent income sources */
+  var recentInc = (state.income||[]).slice(-5);
+  if (recentInc.length) {
+    out += 'Recent income: ' + recentInc.map(function(i){ return (i.source||'income')+' ₹'+i.amount; }).join(', ') + '\n';
+  }
+
+  return out;
+}
+
 function callClaudeAPI(systemPrompt, userMsg, callback) {
-  if (typeof callAI === 'function') {
-    callAI(systemPrompt, userMsg, callback);
+  /* REAL AI call with conversation history — this was broken before:
+     it checked for a function `callAI` that never existed, so every
+     reply was canned text and the AI never saw your data. */
+  if (typeof groqChat === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+    var history = (window.AppState.aiMessages || []).slice(-8);
+    var last = history[history.length - 1];
+    if (!last || last.role !== 'user' || (last.content||last.text) !== userMsg) {
+      history = history.concat([{ role:'user', text:userMsg }]);
+    }
+    groqChat(systemPrompt, history, callback);
     return;
   }
   /* Fallback to built-in smart responses if no API */

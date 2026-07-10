@@ -61,7 +61,7 @@ function renderLanguage() {
 
   /* Tabs */
   h += '<div class="subtab-bar">';
-  [['home','🏠 Languages'],['timer','⏱ Session'],['vocab','📖 Vocabulary'],['notebook','📓 Notebook'],['tutor','🤖 AI Tutor']].forEach(function(t) {
+  [['home','🏠 Languages'],['timer','⏱ Session'],['vocab','📖 Vocabulary'],['review','🔁 Review'],['notebook','📓 Notebook'],['tutor','🤖 AI Tutor']].forEach(function(t) {
     h += '<div class="subtab ' + (tab===t[0]?'active':'') + '" onclick="switchLangTab(\'' + t[0] + '\')">' + t[1] + '</div>';
   });
   h += '</div>';
@@ -69,6 +69,7 @@ function renderLanguage() {
   if (tab === 'home')     h += renderLangHome(state, langs);
   if (tab === 'timer')    h += renderLangTimer(state, langs);
   if (tab === 'vocab')    h += renderLangVocab(state, langs);
+  if (tab === 'review')   h += renderLangReview(state, langs);
   if (tab === 'notebook') h += renderLangNotebook(state, langs);
   if (tab === 'tutor')    h += renderLangTutor(state, langs);
 
@@ -274,6 +275,136 @@ function renderLangVocab(state, langs) {
   h += '</div>';
 
   return h;
+}
+
+/* ============================================
+   TAB: 🔁 REVIEW — spaced repetition
+   Words come back at 1 → 3 → 7 → 30 → 90 days.
+   This is how vocabulary actually sticks.
+   ============================================ */
+var SRS_INTERVALS = [1, 3, 7, 30, 90];
+
+function srsIsDue(w) {
+  if (!w.srs || !w.srs.next) return true;      /* never reviewed → due */
+  return w.srs.next <= aeTodayIso();
+}
+
+function srsDueWords(state, lang) {
+  return ((state.langVocab||{})[lang]||[]).filter(srsIsDue);
+}
+
+function renderLangReview(state, langs) {
+  var h = '';
+  var selLang = state.langReviewLang || Object.keys(langs)[0] || 'en';
+
+  /* Language picker with due counts */
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">';
+  Object.keys(langs).forEach(function(k) {
+    var l = langs[k];
+    var due = srsDueWords(state, k).length;
+    h += '<div onclick="setReviewLang(\'' + k + '\')" style="padding:7px 14px;border-radius:99px;cursor:pointer;font-weight:700;font-size:12px;border:2px solid ' + (selLang===k?l.color:'var(--border)') + ';background:' + (selLang===k?l.color+'22':'var(--card2)') + ';color:' + (selLang===k?l.color:'#8899bb') + ';">' +
+      l.flag + ' ' + escHtml(l.name) + (due>0?' <span style="background:#ef4444;color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;">'+due+'</span>':' ✅') + '</div>';
+  });
+  h += '</div>';
+
+  var vocab = (state.langVocab||{})[selLang]||[];
+  var due   = srsDueWords(state, selLang);
+  var l     = langs[selLang] || { name:selLang, color:'#a855f7', flag:'🌐' };
+
+  /* Today's review stats */
+  var reviewedToday = (state.srsLog||{})[aeTodayIso()] || 0;
+  h += '<div class="grid-3" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#ef4444"><div class="stat-value">' + due.length + '</div><div class="stat-label">Due Now</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + reviewedToday + '</div><div class="stat-label">Reviewed Today</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + vocab.length + '</div><div class="stat-label">Total Words</div></div>';
+  h += '</div>';
+
+  if (vocab.length === 0) {
+    h += '<div class="empty-state"><div class="emo">📖</div><p>No words saved for ' + escHtml(l.name) + ' yet.<br>Add words in the Vocabulary tab — I\'ll quiz you on them here!</p></div>';
+    return h;
+  }
+
+  if (due.length === 0) {
+    /* All caught up — show upcoming schedule */
+    h += '<div class="card" style="text-align:center;padding:24px;margin-bottom:14px;">';
+    h += '<div style="font-size:36px;margin-bottom:8px;">🎉</div>';
+    h += '<div style="font-size:15px;font-weight:800;margin-bottom:6px;">All caught up, Vasavi!</div>';
+    h += '<div style="font-size:12px;color:#8899bb;">Every word is scheduled. Come back when the red badge appears.</div>';
+    h += '</div>';
+    /* Next due dates */
+    var upcoming = vocab.filter(function(w){ return w.srs && w.srs.next; })
+      .sort(function(a,b){ return a.srs.next.localeCompare(b.srs.next); }).slice(0,5);
+    if (upcoming.length) {
+      h += '<div class="card"><div class="card-header">Coming Up</div>';
+      upcoming.forEach(function(w) {
+        h += '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1a1a35;font-size:11px;">' +
+          '<span>' + escHtml(w.word) + '</span><span style="color:#8899bb;">' + w.srs.next + ' · level ' + (w.srs.level||0) + '</span></div>';
+      });
+      h += '</div>';
+    }
+    return h;
+  }
+
+  /* ---- THE FLASHCARD ---- */
+  var word = due[0];
+  var showing = !!state.srsShowAnswer;
+
+  h += '<div class="card" style="text-align:center;padding:28px 20px;margin-bottom:14px;border:1px solid ' + l.color + ';">';
+  h += '<div style="font-size:10px;color:#8899bb;margin-bottom:12px;">' + due.length + ' to review · card 1</div>';
+  h += '<div style="font-size:26px;font-weight:900;margin-bottom:14px;">' + escHtml(word.word) + '</div>';
+
+  if (!showing) {
+    h += '<div style="font-size:12px;color:#8899bb;margin-bottom:16px;">Can you remember the meaning? Say it out loud first!</div>';
+    h += '<button class="btn-primary" style="width:100%;" onclick="srsShow()">👀 Show Meaning</button>';
+  } else {
+    h += '<div style="font-size:16px;color:' + l.color + ';font-weight:700;margin-bottom:8px;">' + escHtml(word.meaning||'(no meaning saved)') + '</div>';
+    if (word.example) {
+      h += '<div style="background:#0a0a1a;border-left:3px solid ' + l.color + ';padding:8px;border-radius:0 6px 6px 0;font-size:12px;color:#c4b5fd;font-style:italic;margin-bottom:14px;">💡 ' + escHtml(word.example) + '</div>';
+    }
+    h += '<div style="display:flex;gap:8px;margin-top:10px;">';
+    h += '<button style="flex:1;padding:12px;border-radius:10px;border:2px solid #ef4444;background:#1a0000;color:#ef4444;cursor:pointer;font-weight:700;" onclick="srsAnswer(\'' + selLang + '\',false)">❌ Forgot<br><span style="font-size:9px;">see again tomorrow</span></button>';
+    h += '<button style="flex:1;padding:12px;border-radius:10px;border:2px solid #10b981;background:#001a0d;color:#10b981;cursor:pointer;font-weight:700;" onclick="srsAnswer(\'' + selLang + '\',true)">✅ I Knew It<br><span style="font-size:9px;">next in ' + SRS_INTERVALS[Math.min((word.srs?word.srs.level:0), SRS_INTERVALS.length-1)] + ' days</span></button>';
+    h += '</div>';
+  }
+  h += '</div>';
+
+  h += '<div style="font-size:10px;color:#556080;text-align:center;">How it works: know a word → it comes back in 1 → 3 → 7 → 30 → 90 days. Forget → it returns tomorrow. This is the science of never forgetting.</div>';
+
+  return h;
+}
+
+function setReviewLang(lang) {
+  window.AppState.langReviewLang = lang;
+  window.AppState.srsShowAnswer = false;
+  saveData(); renderPage();
+}
+
+function srsShow() {
+  window.AppState.srsShowAnswer = true;
+  saveData(); renderPage();
+}
+
+function srsAnswer(lang, knew) {
+  var state = window.AppState;
+  var due = srsDueWords(state, lang);
+  var word = due[0];
+  if (!word) return;
+
+  var today = new Date();
+  if (knew) {
+    var level = (word.srs ? word.srs.level : 0) + 1;
+    var days  = SRS_INTERVALS[Math.min(level-1, SRS_INTERVALS.length-1)];
+    var next  = new Date(today); next.setDate(today.getDate() + days);
+    word.srs = { level: level, next: aeIso(next), last: aeTodayIso() };
+  } else {
+    var tmr = new Date(today); tmr.setDate(today.getDate() + 1);
+    word.srs = { level: 0, next: aeIso(tmr), last: aeTodayIso() };
+  }
+
+  if (!state.srsLog) state.srsLog = {};
+  state.srsLog[aeTodayIso()] = (state.srsLog[aeTodayIso()]||0) + 1;
+  state.srsShowAnswer = false;
+  saveData(); renderPage();
 }
 
 /* ============================================

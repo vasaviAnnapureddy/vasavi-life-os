@@ -117,11 +117,12 @@ function renderJobs() {
 
   /* TABS */
   h += '<div class="subtab-bar">';
-  [['tracker','📋 My Applications'],['targets','🎯 Target Companies'],['bulkapply','🚀 Bulk Apply'],['ats','📄 ATS Resume'],['gap','📊 Skill Gap'],['strategy','💡 Strategy']].forEach(function(t){
+  [['tracker','📋 My Applications'],['analytics','📊 Data Analytics'],['targets','🎯 Target Companies'],['bulkapply','🚀 Bulk Apply'],['ats','📄 ATS Resume'],['gap','📊 Skill Gap'],['strategy','💡 Strategy']].forEach(function(t){
     h += '<div class="subtab ' + (tab===t[0]?'active':'') + '" onclick="switchJobsTab(\'' + t[0] + '\')">' + t[1] + '</div>';
   });
   h += '</div>';
 
+  if (tab === 'analytics')  h += renderJobsAnalytics(state, jobs);
   if (tab === 'tracker')    h += renderJobTracker(state, jobs);
   if (tab === 'targets')    h += renderJobTargets(state, jobs);
   if (tab === 'bulkapply')  h += renderBulkApply(state, jobs);
@@ -478,6 +479,73 @@ function renderJobStrategy(state, jobs) {
    ACTIONS
    ============================================ */
 function switchJobsTab(tab)       { window.AppState.jobsTab=tab; saveData(); renderPage(); }
+
+/* ============================================
+   JOBS — DATA ANALYTICS
+   Funnel, conversion rates, applications
+   per month, follow-up pressure
+   ============================================ */
+function renderJobsAnalytics(state, jobs) {
+  var h = '';
+  if (jobs.length === 0) {
+    return '<div class="empty-state"><div class="emo">💼</div><p>No applications yet. Apply first — analytics appear here!</p></div>';
+  }
+
+  /* Funnel */
+  var statuses = ['Applied','Shortlisted','Interview','Offer','Rejected'];
+  var counts = {};
+  statuses.forEach(function(s){ counts[s] = jobs.filter(function(j){ return j.status===s; }).length; });
+  var responded = jobs.length - counts['Applied'];
+  var responseRate  = pct(responded, jobs.length);
+  var interviewRate = pct(counts['Interview'] + counts['Offer'], jobs.length);
+
+  h += '<div class="grid-4" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + jobs.length + '</div><div class="stat-label">Total Applied</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + responseRate + '%</div><div class="stat-label">Response Rate</div><div class="stat-sub">' + responded + ' moved past Applied</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + interviewRate + '%</div><div class="stat-label">Interview Rate</div><div class="stat-sub">' + (counts['Interview']+counts['Offer']) + ' interviews+</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + counts['Offer'] + '</div><div class="stat-label">Offers</div></div>';
+  h += '</div>';
+
+  /* Funnel bars */
+  h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">Application Funnel</div>';
+  var funnelColors = { Applied:'#a5b4fc', Shortlisted:'#93c5fd', Interview:'#fdba74', Offer:'#6ee7b7', Rejected:'#fca5a5' };
+  statuses.forEach(function(s) {
+    h += aeBarRow(s, counts[s], jobs.length, funnelColors[s], counts[s] + ' (' + pct(counts[s], jobs.length) + '%)');
+  });
+  h += '</div>';
+
+  /* Applications per month */
+  var byMonth = {};
+  jobs.forEach(function(j) {
+    var d = new Date(j.date || j.appliedTs || 0);
+    if (isNaN(d)) return;
+    var iso = aeIso(d);
+    byMonth[iso] = (byMonth[iso]||0) + 1;
+  });
+  var v = aeGetView('jobs');
+  var monthVals = aeMonthTotals(byMonth, v.y);
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeYearNav('jobs');
+  h += aeYearBarChart(monthVals, v.y===new Date().getFullYear()?new Date().getMonth():-1, '#a855f7', function(vv){ return vv; });
+  h += '<div style="font-size:11px;color:#8899bb;">' + v.y + ' total: <b style="color:#a855f7;">' + monthVals.reduce(function(a,b){return a+b;},0) + ' applications</b></div>';
+  h += '</div>';
+
+  /* Honest insight from her own numbers */
+  var insight;
+  if (jobs.length < 20) {
+    insight = 'You\'ve applied to ' + jobs.length + ' jobs. Response rates for freshers are usually 5-10%, so volume matters — target 10/day until interviews start flowing.';
+  } else if (responseRate < 10) {
+    insight = 'Response rate is ' + responseRate + '% after ' + jobs.length + ' applications — the resume/ATS match is the bottleneck, not you. Use the ATS Resume tab to tailor before each apply.';
+  } else if (counts['Interview'] > 0 && counts['Offer'] === 0) {
+    insight = 'You ARE getting interviews (' + counts['Interview'] + ') — the funnel breaks at the interview stage. Shift energy from applying to mock interviews.';
+  } else {
+    insight = 'Response rate ' + responseRate + '%, interview rate ' + interviewRate + '%. Keep the volume and keep tailoring — the numbers are working.';
+  }
+  h += '<div class="card"><div class="card-header">💡 What Your Numbers Say</div>';
+  h += '<div style="font-size:12px;line-height:1.8;color:#a0aec0;">' + insight + '</div></div>';
+
+  return h;
+}
 function setJobFilter(status)     { window.AppState.jobFilterStatus=status; saveData(); renderPage(); }
 
 function quickTrackJob(company, role, link, matchScore) {
