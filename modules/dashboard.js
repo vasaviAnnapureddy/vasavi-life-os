@@ -110,17 +110,44 @@ function renderDashboard() {
   /* ---- MIDDLE ROW ---- */
   h += '<div class="grid-2">';
 
-  /* Module Progress Card */
+  /* Today's Goals Card (replaces DS Roadmap in module progress) */
+  var todayIsoG   = new Date().toISOString().split('T')[0];
+  var todayGoals  = goalsDaily.filter(function(g){ return !g.deadline || g.deadline === todayIsoG; });
+  var todayGoalsDone = todayGoals.filter(function(g){ return g.done; }).length;
+  var gStreak = goalStreak(state);
+
   h += '<div class="card">' +
-    '<div class="card-header">Module Progress</div>';
+    '<div class="card-header"><span>🎯 Today\'s Main Goals (' + todayGoalsDone + '/' + todayGoals.length + ')</span>' +
+    '<span class="streak-badge">🔥 ' + gStreak + 'd streak</span></div>';
 
+  /* Quick add */
+  h += '<div style="display:flex;gap:8px;margin-bottom:10px;">';
+  h += '<input id="dash-quick-goal" placeholder="Add a main goal for today..." style="flex:1;" onkeydown="if(event.key===\'Enter\')addDashQuickGoal()" />';
+  h += '<button class="btn-primary" onclick="addDashQuickGoal()" style="font-size:12px;">+ Add</button>';
+  h += '</div>';
+
+  if (todayGoals.length === 0) {
+    h += '<div style="text-align:center;color:#556080;font-size:12px;padding:12px;">No goals for today yet. What matters most today, Vasavi? 🎯</div>';
+  } else {
+    todayGoals.forEach(function(g) {
+      var realIdx = goalsDaily.indexOf(g);
+      h += '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #1a1a35;">';
+      h += '<div onclick="toggleDashQuickGoal(' + realIdx + ')" style="width:18px;height:18px;border-radius:50%;border:2px solid ' + (g.done?'#10b981':'#556080') + ';background:' + (g.done?'#10b981':'transparent') + ';cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;">';
+      if (g.done) h += '<span style="color:#fff;font-size:10px;">✓</span>';
+      h += '</div>';
+      h += '<span style="font-size:12px;flex:1;text-decoration:' + (g.done?'line-through':'none') + ';color:' + (g.done?'#556080':'#f0f0ff') + ';">' + escHtml(g.text||g.name||'') + '</span>';
+      if (g.priority === 'High') h += '<span style="font-size:9px;color:#ef4444;font-weight:800;">HIGH</span>';
+      h += '</div>';
+    });
+  }
+
+  /* Other module progress below the goals */
+  h += '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #1a1a35;">';
   var modules = [
-    ['DS Roadmap', pct(dsDone, 10), '#a855f7'],
-    ['Habits',     habAvg,          '#10b981'],
-    ['Project',    projPct,         '#f59e0b'],
-    ['Books',      bkAvg,           '#06b6d4']
+    ['Habits',  habAvg,  '#10b981'],
+    ['Project', projPct, '#f59e0b'],
+    ['Books',   bkAvg,   '#06b6d4']
   ];
-
   modules.forEach(function(m) {
     h += '<div class="progress-wrap">' +
       '<div class="progress-label">' +
@@ -133,6 +160,7 @@ function renderDashboard() {
       '</div>' +
     '</div>';
   });
+  h += '</div>';
 
   h += '</div>';
 
@@ -237,6 +265,19 @@ function renderDashboard() {
   h += '</div>';
 
   return h;
+}
+
+/* ============================================
+   GOAL STREAK — consecutive days where you
+   completed at least one daily goal
+   ============================================ */
+function goalStreak(state) {
+  var daily = (state.goals && state.goals.daily) ? state.goals.daily : [];
+  var doneByDay = {};
+  daily.forEach(function(g) {
+    if (g.done && g.deadline) doneByDay[g.deadline] = 1;
+  });
+  return aeStreak(doneByDay);
 }
 
 function addDashQuickGoal() {

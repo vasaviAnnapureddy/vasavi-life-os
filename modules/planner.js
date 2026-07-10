@@ -320,6 +320,17 @@ function saveReflection() {
     tomorrow: tomorrow ? tomorrow.value : ''
   };
 
+  /* Archive per-date FOREVER (old version overwrote it daily!)
+     → shows up in Rich Notes → My Reflections */
+  var iso = aeTodayIso();
+  if (!window.AppState.reflectionArchive) window.AppState.reflectionArchive = {};
+  window.AppState.reflectionArchive[iso] = {
+    well:     well     ? well.value     : '',
+    better:   better   ? better.value   : '',
+    tomorrow: tomorrow ? tomorrow.value : '',
+    date:     iso
+  };
+
   if (workOn)   window.AppState.planner.workingOn = workOn.value;
   if (oneThing) window.AppState.planner.focus     = oneThing.value;
 

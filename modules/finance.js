@@ -11,6 +11,15 @@ var CAT_COLORS = {
   Study:'#f59e0b', Entertainment:'#6366f1', Other:'#64748b'
 };
 
+/* Custom categories (e.g. "Gifts", "Rent") get a stable color too */
+var CAT_PALETTE = ['#14b8a6','#8b5cf6','#f43f5e','#84cc16','#0ea5e9','#d946ef','#eab308','#fb7185'];
+function catColor(cat) {
+  if (CAT_COLORS[cat]) return CAT_COLORS[cat];
+  var hash = 0;
+  String(cat||'').split('').forEach(function(ch){ hash = (hash*31 + ch.charCodeAt(0)) % 997; });
+  return CAT_PALETTE[hash % CAT_PALETTE.length];
+}
+
 function renderFinance() {
   var state      = window.AppState;
   var expenses   = state.expenses || [];
@@ -86,11 +95,13 @@ function renderFinance() {
 
   h += '<div class="form-row">' +
     '<label>Category</label>' +
-    '<select id="exp-cat">' +
+    '<select id="exp-cat" onchange="toggleCustomCat(this)">' +
       EXP_CATS.map(function(c) {
-        return '<option value="' + c + '">' + c + '</option>';
+        return '<option value="' + c + '">' + (c==='Other' ? 'Other (type what it is!)' : c) + '</option>';
       }).join('') +
     '</select>' +
+    '<input id="exp-cat-custom" placeholder="What is it? e.g. Rent, Gifts, Mobile recharge..." ' +
+      'style="display:none;margin-top:6px;border-color:#f59e0b;" />' +
   '</div>';
 
   h += '<div class="form-row">' +
@@ -111,20 +122,14 @@ function renderFinance() {
 
   h += '</div>';
 
-  /* ---- CATEGORY BREAKDOWN ---- */
+  /* ---- CATEGORY BREAKDOWN (includes custom categories) ---- */
   h += '<div class="grid-2">';
 
   h += '<div class="card">';
   h += '<div class="card-header">This Month by Category</div>';
 
-  var byCat = {};
-  EXP_CATS.forEach(function(c) {
-    byCat[c] = monthExp.filter(function(e) {
-      return e.cat === c;
-    }).reduce(function(a, e) { return a + (e.amount || 0); }, 0);
-  });
-
-  var sorted = EXP_CATS.filter(function(c) {
+  var byCat = financeCatTotals(monthExp);
+  var sorted = Object.keys(byCat).filter(function(c) {
     return byCat[c] > 0;
   }).sort(function(a, b) { return byCat[b] - byCat[a]; });
 
@@ -132,13 +137,13 @@ function renderFinance() {
     sorted.forEach(function(cat) {
       h += '<div class="progress-wrap">' +
         '<div class="progress-label">' +
-          '<span style="color:' + CAT_COLORS[cat] + '">' + cat + '</span>' +
+          '<span style="color:' + catColor(cat) + '">' + escHtml(cat) + '</span>' +
           '<span>Rs ' + formatRupees(byCat[cat]) + '</span>' +
         '</div>' +
         '<div class="progress-bar">' +
           '<div class="progress-fill" style="width:' +
             pct(byCat[cat], totalMonth || 1) + '%;' +
-            'background:' + CAT_COLORS[cat] + '"></div>' +
+            'background:' + catColor(cat) + '"></div>' +
         '</div>' +
       '</div>';
     });
@@ -147,7 +152,7 @@ function renderFinance() {
     var topCat = sorted[0];
     h += '<div style="margin-top:10px;padding:8px;background:#1a1a35;' +
              'border-radius:8px;font-size:11px;color:#f59e0b;">' +
-      '💡 Top spend: ' + topCat + ' (Rs ' + formatRupees(byCat[topCat]) +
+      '💡 Top spend: ' + escHtml(topCat) + ' (Rs ' + formatRupees(byCat[topCat]) +
       ' = ' + pct(byCat[topCat], totalMonth) + '% of budget)' +
     '</div>';
   } else {
@@ -196,46 +201,73 @@ function renderFinance() {
   h += '</div>';
   h += '</div>';
 
-  /* ---- RECENT EXPENSES ---- */
-  h += '<div class="card">';
-  h += '<div class="card-header">Recent Expenses</div>';
+  /* ---- MONTH-BY-MONTH EXPENSE LIST ----
+     Browse ANY month with ◀ ▶ and see every
+     transaction of that month grouped by day */
+  var lv = aeGetView('financeList');
+  var listExp = financeMonthExpenses(expenses, lv.y, lv.m);
+  var listTotal = listExp.reduce(function(a,e){ return a+(e.amount||0); }, 0);
 
-  if (expenses.length > 0) {
-    expenses.slice().reverse().slice(0, 15).forEach(function(e, ri) {
-      var realIdx = expenses.length - 1 - ri;
+  h += '<div class="card">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+    '<button class="btn-ghost" style="padding:4px 12px;" onclick="aeShiftMonth(\'financeList\',-1)">◀</button>' +
+    '<div style="text-align:center;">' +
+      '<div style="font-size:13px;font-weight:800;">' + AE_MONTHS[lv.m] + ' ' + lv.y + ' Expenses</div>' +
+      '<div style="font-size:11px;color:#f59e0b;font-weight:700;">Rs ' + formatRupees(listTotal) + ' · ' + listExp.length + ' transactions</div>' +
+    '</div>' +
+    '<button class="btn-ghost" style="padding:4px 12px;" onclick="aeShiftMonth(\'financeList\',1)">▶</button>' +
+  '</div>';
+
+  if (listExp.length > 0) {
+    /* Sort newest first, group by day */
+    var sortedExp = listExp.slice().sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+    var lastDay = '';
+    sortedExp.forEach(function(e) {
+      var d = new Date(e.date || Date.now());
+      var dayKey = aeIso(d);
+      if (dayKey !== lastDay) {
+        lastDay = dayKey;
+        var dayTotal = listExp.filter(function(x){ return aeIso(new Date(x.date||0)) === dayKey; })
+                              .reduce(function(a,x){ return a+(x.amount||0); }, 0);
+        h += '<div style="display:flex;justify-content:space-between;margin:12px 0 4px;font-size:10px;font-weight:800;color:#8899bb;text-transform:uppercase;">' +
+          '<span>' + d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}) + '</span>' +
+          '<span>Rs ' + formatRupees(dayTotal) + '</span>' +
+        '</div>';
+      }
+      var realIdx = expenses.indexOf(e);
       h += '<div class="expense-row">';
       h += '<div>' +
-        '<div style="font-weight:600;font-size:12px;">' +
-          escHtml(e.note || e.cat) +
-        '</div>' +
-        '<div style="font-size:10px;color:#556080;margin-top:2px;">' +
-          escHtml(e.date || '') +
-          ' &nbsp;·&nbsp; ' +
-          '<span style="color:' + (CAT_COLORS[e.cat] || '#888') + '">' +
-            escHtml(e.cat) +
-          '</span>' +
+        '<div style="font-weight:600;font-size:12px;">' + escHtml(e.note || e.cat) + '</div>' +
+        '<div style="font-size:10px;margin-top:2px;">' +
+          '<span style="color:' + catColor(e.cat) + '">' + escHtml(e.cat) + '</span>' +
         '</div>' +
       '</div>';
       h += '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<span style="font-weight:800;color:#f59e0b;">' +
-          'Rs ' + formatRupees(e.amount) +
-        '</span>' +
+        '<span style="font-weight:800;color:#f59e0b;">Rs ' + formatRupees(e.amount) + '</span>' +
         '<button onclick="deleteExpense(' + realIdx + ')" ' +
-          'style="background:none;border:none;color:#556080;' +
-                 'cursor:pointer;font-size:13px;">✕</button>' +
+          'style="background:none;border:none;color:#556080;cursor:pointer;font-size:13px;">✕</button>' +
       '</div>';
       h += '</div>';
     });
   } else {
     h += '<div class="empty-state" style="padding:20px;">' +
       '<div class="emo">💰</div>' +
-      '<p>No expenses yet.<br>Add your first one above!</p>' +
+      '<p>No expenses in ' + AE_MONTHS[lv.m] + ' ' + lv.y + '.<br>Use ◀ ▶ to browse other months.</p>' +
     '</div>';
   }
 
   h += '</div>';
 
   return h;
+}
+
+/* Show the custom category box when "Other" is picked */
+function toggleCustomCat(sel) {
+  var box = document.getElementById(sel.id === 'exp-cat' ? 'exp-cat-custom' : 'm-cat-custom');
+  if (box) {
+    box.style.display = sel.value === 'Other' ? 'block' : 'none';
+    if (sel.value === 'Other') box.focus();
+  }
 }
 
 /* ============================================
@@ -246,6 +278,13 @@ function addExpense() {
   var cat  = document.getElementById('exp-cat').value;
   var date = document.getElementById('exp-date').value;
   var note = document.getElementById('exp-note').value;
+
+  /* "Other" + typed name → becomes its own real category */
+  var customEl = document.getElementById('exp-cat-custom');
+  if (cat === 'Other' && customEl && customEl.value.trim()) {
+    var c = customEl.value.trim();
+    cat = c.charAt(0).toUpperCase() + c.slice(1);
+  }
 
   if (!amt || amt <= 0) {
     alert('Please enter a valid amount.');
@@ -346,7 +385,7 @@ function renderFinanceAnalytics(state) {
       h += '<div style="border-top:1px solid #1a1a35;padding-top:12px;">';
       h += '<div class="card-header">Where the money went</div>';
       sorted.forEach(function(cat) {
-        var col = CAT_COLORS[cat] || '#64748b';
+        var col = catColor(cat);
         var share = pct(byCat[cat], total || 1);
         h += '<div class="progress-wrap">' +
           '<div class="progress-label">' +
@@ -374,7 +413,7 @@ function renderFinanceAnalytics(state) {
       h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">Biggest Expenses This Month</div>';
       top5.forEach(function(e) {
         h += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1a1a35;font-size:11px;">';
-        h += '<span>' + escHtml(e.note||e.cat) + ' <span style="color:' + (CAT_COLORS[e.cat]||'#888') + ';">· ' + escHtml(e.cat||'') + '</span></span>';
+        h += '<span>' + escHtml(e.note||e.cat) + ' <span style="color:' + catColor(e.cat) + ';">· ' + escHtml(e.cat||'') + '</span></span>';
         h += '<span style="color:#f59e0b;font-weight:800;">₹' + formatRupees(e.amount) + '</span></div>';
       });
       h += '</div>';
@@ -407,7 +446,7 @@ function renderFinanceAnalytics(state) {
     if (sortedY.length) {
       h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">' + vy.y + ' by Category</div>';
       sortedY.forEach(function(cat) {
-        var col = CAT_COLORS[cat] || '#64748b';
+        var col = catColor(cat);
         h += aeBarRow(cat + ' (' + pct(byCatY[cat], yearTotal||1) + '%)', byCatY[cat], yearTotal||1, col, '₹' + formatRupees(byCatY[cat]));
       });
       h += '</div>';

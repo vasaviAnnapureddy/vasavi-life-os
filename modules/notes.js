@@ -8,8 +8,9 @@
    Like Google Docs but yours forever
    ============================================ */
 
-/* 7 default document categories */
+/* Default document categories */
 var DEFAULT_DOCS = [
+  { id:'doc_reflections', icon:'🪞', title:'My Reflections',     desc:'Every daily reflection you ever wrote — from Journal and Planner — organized by year, month and day. Saved for life.' },
   { id:'doc_life',      icon:'🌟', title:'Life Thoughts',        desc:'Reflections, realisations, things you want to remember about life' },
   { id:'doc_ds',        icon:'💻', title:'DS and Tech Notes',     desc:'Things you learned, code snippets, concepts explained in your words' },
   { id:'doc_india',     icon:'🕉️', title:'Indian Wisdom',         desc:'Gita verses, Vedanta insights, Ayurveda notes, slokas with meaning' },
@@ -59,6 +60,15 @@ function renderDocList(state) {
     var lastEntry = entries.length > 0 ? entries[entries.length-1] : null;
     var isCustom  = !DEFAULT_DOCS.find(function(d){ return d.id === doc.id; });
 
+    /* Reflections doc counts journal + planner reflections */
+    if (doc.id === 'doc_reflections') {
+      var refDays = {};
+      (state.journalEntries||[]).forEach(function(e){ var d=new Date(e.date); if(!isNaN(d)) refDays[aeIso(d)]=1; });
+      Object.keys(state.reflectionArchive||{}).forEach(function(k){ refDays[k]=1; });
+      entries = { length: Object.keys(refDays).length };
+      lastEntry = null;
+    }
+
     h += '<div onclick="openNotesDoc(\'' + doc.id + '\')" style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .2s;" onmouseover="this.style.borderColor=\'#a855f7\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
     h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">';
     h += '<span style="font-size:28px;">' + doc.icon + '</span>';
@@ -102,6 +112,9 @@ function renderDocEditor(state, docId) {
   var doc     = allDocs.find(function(d){ return d.id === docId; });
   if (!doc) return '<div class="empty-state"><div class="emo">📄</div><p>Document not found.</p></div>';
 
+  /* Special document: aggregated reflections timeline */
+  if (docId === 'doc_reflections') return renderReflectionsDoc(state);
+
   var entries = ((state.notesData||{})[docId]||[]);
   var h       = '';
 
@@ -113,11 +126,13 @@ function renderDocEditor(state, docId) {
   h += '<div style="font-size:11px;color:#8899bb;">' + escHtml(doc.desc) + ' · ' + entries.length + ' entries</div></div>';
   h += '</div>';
 
-  /* Input area — text */
+  /* Input area — rich text like Word */
   h += '<div class="card" style="margin-bottom:14px;">';
-  h += '<div style="font-size:11px;font-weight:700;color:#a855f7;margin-bottom:10px;">✍️ Add Entry</div>';
+  h += '<div style="font-size:11px;font-weight:700;color:#a855f7;margin-bottom:10px;">✍️ Add Entry — format it like a Word document</div>';
   h += '<input id="ne-title" placeholder="Entry title (optional)..." style="margin-bottom:8px;" />';
-  h += '<textarea id="ne-text" rows="5" placeholder="Write anything here. Your thoughts, what you learned, how you feel, ideas that came to you..." style="margin-bottom:10px;"></textarea>';
+  h += notesToolbar();
+  h += '<div id="ne-editor" contenteditable="true" data-placeholder="Write anything here. Select text and use the toolbar — bold, headings, lists, colors..." ' +
+       'style="min-height:150px;max-height:400px;overflow-y:auto;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;line-height:1.8;color:#f0f0ff;margin-bottom:10px;outline:none;"></div>';
 
   /* Image attach */
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">';
@@ -162,18 +177,33 @@ function renderDocEditor(state, docId) {
 
     /* Entry content (when open) */
     if (isOpen) {
+      var isEditing = state.notesEntryEditing === (docId + '_' + realIdx);
       h += '<div style="padding:0 14px 14px;">';
-      if (entry.content) {
-        h += '<div style="font-size:13px;line-height:1.8;color:#c4c4d4;white-space:pre-wrap;margin-bottom:10px;">' + escHtml(entry.content) + '</div>';
+
+      if (isEditing) {
+        /* Full rich editor for re-editing — like reopening a Word doc */
+        h += notesToolbar('edit-editor-' + realIdx);
+        h += '<div id="edit-editor-' + realIdx + '" contenteditable="true" ' +
+             'style="min-height:120px;max-height:400px;overflow-y:auto;background:var(--card2);border:1px solid #a855f7;border-radius:8px;padding:12px;font-size:13px;line-height:1.8;color:#f0f0ff;margin-bottom:10px;outline:none;">' +
+             (entry.html || escHtml(entry.content||'').replace(/\n/g,'<br>')) + '</div>';
+        h += '<div style="display:flex;gap:8px;">';
+        h += '<button class="btn-primary" style="flex:1;" onclick="saveEntryEdit(\'' + docId + '\',' + realIdx + ')">💾 Save Changes</button>';
+        h += '<button class="btn-ghost" onclick="cancelEntryEdit()">Cancel</button>';
+        h += '</div>';
+      } else {
+        if (entry.html) {
+          h += '<div style="font-size:13px;line-height:1.8;color:#c4c4d4;margin-bottom:10px;word-break:break-word;">' + entry.html + '</div>';
+        } else if (entry.content) {
+          h += '<div style="font-size:13px;line-height:1.8;color:#c4c4d4;white-space:pre-wrap;margin-bottom:10px;">' + escHtml(entry.content) + '</div>';
+        }
+        if (entry.imageData) {
+          h += '<img src="' + entry.imageData + '" style="max-width:100%;border-radius:8px;margin-bottom:10px;" />';
+        }
+        if (entry.voiceData) {
+          h += '<audio controls style="width:100%;margin-bottom:10px;"><source src="' + entry.voiceData + '" /></audio>';
+        }
+        h += '<button class="btn-ghost" style="font-size:11px;" onclick="startEntryEdit(\'' + docId + '\',' + realIdx + ')">✏️ Edit This Entry</button>';
       }
-      if (entry.imageData) {
-        h += '<img src="' + entry.imageData + '" style="max-width:100%;border-radius:8px;margin-bottom:10px;" />';
-      }
-      if (entry.voiceData) {
-        h += '<audio controls style="width:100%;margin-bottom:10px;"><source src="' + entry.voiceData + '" /></audio>';
-      }
-      /* Edit text area */
-      h += '<textarea rows="4" onchange="editNoteEntry(\'' + docId + '\',' + realIdx + ',this.value)" style="font-size:12px;">' + escHtml(entry.content||'') + '</textarea>';
       h += '</div>';
     }
 
@@ -189,6 +219,148 @@ function renderDocEditor(state, docId) {
 function getAllDocs(state) {
   var custom = state.customDocs || [];
   return DEFAULT_DOCS.concat(custom);
+}
+
+/* ============================================
+   MY REFLECTIONS — every reflection you ever
+   wrote, from Journal + Planner, grouped by
+   Year → Month → Day. Nothing is ever lost.
+   ============================================ */
+function renderReflectionsDoc(state) {
+  var h = '';
+
+  /* Collect from BOTH sources into one dated list */
+  var items = {};  /* iso → { journal:{...}, planner:{...} } */
+
+  (state.journalEntries || []).forEach(function(e) {
+    var d = new Date(e.date);
+    if (isNaN(d)) return;
+    var iso = aeIso(d);
+    if (!items[iso]) items[iso] = {};
+    items[iso].journal = e;
+  });
+
+  Object.keys(state.reflectionArchive || {}).forEach(function(iso) {
+    if (!items[iso]) items[iso] = {};
+    items[iso].planner = state.reflectionArchive[iso];
+  });
+
+  var isoList = Object.keys(items).sort().reverse(); /* newest first */
+
+  /* Header */
+  h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">';
+  h += '<button onclick="closeNotesDoc()" style="background:transparent;border:1px solid var(--border);color:#8899bb;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:11px;">← Back</button>';
+  h += '<span style="font-size:22px;">🪞</span>';
+  h += '<div><div style="font-size:16px;font-weight:800;">My Reflections</div>';
+  h += '<div style="font-size:11px;color:#8899bb;">' + isoList.length + ' days of reflections · saved for life</div></div>';
+  h += '</div>';
+
+  h += '<button class="btn-primary" style="width:100%;margin-bottom:14px;" onclick="goToPage(\'journal\')">✍️ Write Today\'s Reflection</button>';
+
+  if (isoList.length === 0) {
+    h += '<div class="empty-state"><div class="emo">🪞</div><p>No reflections yet.<br>Write tonight\'s in Journal + Talk — it will appear here forever.</p></div>';
+    return h;
+  }
+
+  /* Grouped: Year → Month → Day */
+  var lastYear = '', lastMonth = '';
+  isoList.forEach(function(iso) {
+    var d     = new Date(iso);
+    var year  = String(d.getFullYear());
+    var month = AE_MONTHS[d.getMonth()];
+
+    if (year !== lastYear) {
+      lastYear = year; lastMonth = '';
+      h += '<div style="font-size:18px;font-weight:900;color:#a855f7;margin:18px 0 4px;">' + year + '</div>';
+    }
+    if (month !== lastMonth) {
+      lastMonth = month;
+      var monthCount = isoList.filter(function(i){ var dd=new Date(i); return dd.getFullYear()===d.getFullYear() && dd.getMonth()===d.getMonth(); }).length;
+      h += '<div style="font-size:13px;font-weight:800;color:#8899bb;margin:10px 0 6px;border-bottom:1px solid #1a1a35;padding-bottom:4px;">' + month + ' · ' + monthCount + ' reflections</div>';
+    }
+
+    var it = items[iso];
+    h += '<div class="card" style="margin-bottom:8px;border-left:3px solid #ec4899;">';
+    h += '<div style="font-size:11px;font-weight:800;color:#ec4899;margin-bottom:6px;">' +
+      d.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + '</div>';
+
+    if (it.journal) {
+      var j = it.journal;
+      if (j.mood)      h += '<div style="font-size:11px;margin-bottom:4px;">Mood: ' + escHtml(j.mood) + '</div>';
+      if (j.wins)      h += '<div style="font-size:12px;line-height:1.6;margin-bottom:4px;"><b style="color:#10b981;">✅ Wins:</b> ' + escHtml(j.wins) + '</div>';
+      if (j.hard)      h += '<div style="font-size:12px;line-height:1.6;margin-bottom:4px;"><b style="color:#f59e0b;">😤 Hard:</b> ' + escHtml(j.hard) + '</div>';
+      if (j.tmr)       h += '<div style="font-size:12px;line-height:1.6;margin-bottom:4px;"><b style="color:#3b82f6;">🌅 Tomorrow:</b> ' + escHtml(j.tmr) + '</div>';
+      if (j.gratitude) h += '<div style="font-size:12px;line-height:1.6;margin-bottom:4px;"><b style="color:#a855f7;">🙏 Grateful:</b> ' + escHtml(j.gratitude) + '</div>';
+    }
+    if (it.planner) {
+      var p = it.planner;
+      if (p.well)     h += '<div style="font-size:12px;line-height:1.6;margin-bottom:4px;"><b style="color:#10b981;">💪 Went well:</b> ' + escHtml(p.well) + '</div>';
+      if (p.better)   h += '<div style="font-size:12px;line-height:1.6;margin-bottom:4px;"><b style="color:#f59e0b;">📈 Do better:</b> ' + escHtml(p.better) + '</div>';
+      if (p.tomorrow) h += '<div style="font-size:12px;line-height:1.6;margin-bottom:4px;"><b style="color:#3b82f6;">🗓️ Tomorrow:</b> ' + escHtml(p.tomorrow) + '</div>';
+    }
+    h += '</div>';
+  });
+
+  return h;
+}
+
+/* ============================================
+   RICH TEXT TOOLBAR — like Word
+   ============================================ */
+function notesToolbar() {
+  var btn = function(label, cmd, val, title) {
+    return '<button onmousedown="event.preventDefault();notesCmd(\'' + cmd + '\'' + (val?',\''+val+'\'':'') + ')" ' +
+      'title="' + title + '" ' +
+      'style="min-width:30px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card2);color:#c4c4d4;cursor:pointer;font-size:12px;">' +
+      label + '</button>';
+  };
+  var h = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">';
+  h += btn('<b>B</b>',  'bold', null, 'Bold');
+  h += btn('<i>I</i>',  'italic', null, 'Italic');
+  h += btn('<u>U</u>',  'underline', null, 'Underline');
+  h += btn('<s>S</s>',  'strikeThrough', null, 'Strikethrough');
+  h += btn('H1', 'formatBlock', 'h2', 'Big heading');
+  h += btn('H2', 'formatBlock', 'h3', 'Small heading');
+  h += btn('¶',  'formatBlock', 'p', 'Normal text');
+  h += btn('• List', 'insertUnorderedList', null, 'Bullet list');
+  h += btn('1. List', 'insertOrderedList', null, 'Numbered list');
+  h += btn('<span style="color:#a855f7;">A</span>', 'foreColor', '#a855f7', 'Purple text');
+  h += btn('<span style="color:#10b981;">A</span>', 'foreColor', '#10b981', 'Green text');
+  h += btn('<span style="color:#ef4444;">A</span>', 'foreColor', '#ef4444', 'Red text');
+  h += btn('<span style="color:#f0f0ff;">A</span>', 'foreColor', '#f0f0ff', 'White text');
+  h += btn('<span style="background:#f59e0b;color:#000;padding:0 3px;">A</span>', 'hiliteColor', '#7c5800', 'Highlight');
+  h += btn('↺', 'undo', null, 'Undo');
+  h += btn('↻', 'redo', null, 'Redo');
+  h += btn('✕fmt', 'removeFormat', null, 'Clear formatting');
+  h += '</div>';
+  return h;
+}
+
+function notesCmd(cmd, val) {
+  document.execCommand(cmd, false, val || null);
+}
+
+function startEntryEdit(docId, idx) {
+  window.AppState.notesEntryEditing = docId + '_' + idx;
+  saveData(); renderPage();
+}
+
+function cancelEntryEdit() {
+  window.AppState.notesEntryEditing = null;
+  saveData(); renderPage();
+}
+
+function saveEntryEdit(docId, idx) {
+  var ed = document.getElementById('edit-editor-' + idx);
+  if (!ed) return;
+  var entry = (window.AppState.notesData[docId]||[])[idx];
+  if (!entry) return;
+  entry.html    = ed.innerHTML;
+  entry.content = ed.innerText;
+  entry.edited  = todayString();
+  window.AppState.notesEntryEditing = null;
+  saveData(); renderPage();
+  showToast('Entry updated! ✅');
 }
 
 /* ============================================
@@ -260,8 +432,9 @@ function toggleEntryOpen(docId, idx) {
 
 function addNoteEntry(docId) {
   var title   = (document.getElementById('ne-title')||{}).value || '';
-  var text    = (document.getElementById('ne-text') ||{}).value || '';
-  var imgEl   = document.getElementById('ne-image');
+  var editor  = document.getElementById('ne-editor');
+  var html    = editor ? editor.innerHTML : '';
+  var text    = editor ? editor.innerText : '';
   var imgData = null;
 
   /* Get image if attached */
@@ -276,6 +449,7 @@ function addNoteEntry(docId) {
   var entry = {
     title:     title.trim(),
     content:   text.trim(),
+    html:      text.trim() ? html : '',
     imageData: imgData || null,
     voiceData: null,
     date:      todayString(),
@@ -310,7 +484,8 @@ function _saveEntry(docId, entry) {
   window.AppState.notesData[docId].push(entry);
 
   /* Clear inputs */
-  ['ne-title','ne-text'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  ['ne-title'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  var ed = document.getElementById('ne-editor'); if(ed) ed.innerHTML='';
   var pv = document.getElementById('ne-image-preview'); if(pv) pv.innerHTML='';
   var vs = document.getElementById('ne-voice-status'); if(vs) vs.textContent='';
   _voiceBlob = null;

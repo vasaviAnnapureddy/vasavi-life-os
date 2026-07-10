@@ -199,6 +199,30 @@ function logGym() {
   renderPage();
 }
 
+/* Tap a calendar day to log/unlog gym for that date
+   (for the days you forgot to open the app) */
+function gymToggleDate(iso) {
+  var state = window.AppState;
+  if (!state.gymLog) state.gymLog = {};
+
+  /* Find any existing key (old date formats included) matching this day */
+  var existingKey = null;
+  Object.keys(state.gymLog).forEach(function(k) {
+    if (state.gymLog[k] && aeIso(new Date(k)) === iso) existingKey = k;
+  });
+
+  if (existingKey) {
+    if (!confirm('Remove gym log for ' + iso + '?')) return;
+    delete state.gymLog[existingKey];
+    showToast('Gym unmarked for ' + iso);
+  } else {
+    state.gymLog[iso] = true;
+    showToast('💪 Gym logged for ' + iso + '!');
+  }
+  saveData();
+  renderPage();
+}
+
 /* ============================================
    NUTRITION PLAN — Vasavi's Daily Meal Plan
    South Indian focus, gym-optimized
@@ -331,13 +355,15 @@ function renderGymAnalytics(state) {
   }
   var monthCount = aeActiveDaysInMonth(byDate, now.getFullYear(), now.getMonth());
   var yearCount  = Object.keys(byDate).filter(function(iso){ return parseInt(iso.substring(0,4))===now.getFullYear(); }).length;
-  var streak     = aeStreak(byDate);
+  /* Flexible streak: up to 2 rest days never break it.
+     Counts your gym SESSIONS in the unbroken run. */
+  var streak     = aeStreakFlexible(byDate, 2);
 
   h += '<div class="grid-4" style="margin-bottom:14px;">';
   h += '<div class="stat-card" style="--stat-color:#f97316"><div class="stat-value">' + weekCount + '/7</div><div class="stat-label">This Week</div></div>';
   h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + monthCount + '</div><div class="stat-label">This Month</div><div class="stat-sub">' + AE_MONTHS_SHORT[now.getMonth()] + '</div></div>';
   h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + yearCount + '</div><div class="stat-label">This Year</div><div class="stat-sub">' + now.getFullYear() + '</div></div>';
-  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Day Streak</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Session Streak</div><div class="stat-sub">rest days don\'t break it</div></div>';
   h += '</div>';
 
   /* Monthly calendar of gym days */
@@ -348,9 +374,10 @@ function renderGymAnalytics(state) {
 
   h += '<div class="card" style="margin-bottom:14px;">';
   h += aeMonthNav('gym');
-  h += aeCalendarHeatmap(v.y, v.m, byDate, function(val){ return val>0?'#f97316':'#1a1a35'; }, function(val){ return val>0?'💪':''; });
+  h += aeCalendarHeatmap(v.y, v.m, byDate, function(val){ return val>0?'#f97316':'#1a1a35'; }, function(val){ return val>0?'💪':''; }, 'gymToggleDate');
   h += '<div style="font-size:11px;color:#8899bb;margin-top:10px;">Went to gym <b style="color:#f97316;">' + vMonthCount + '</b> days in ' + AE_MONTHS[v.m] +
     (isCur?' so far':'') + ' · missed ' + Math.max(0, elapsed - vMonthCount) + ' days</div>';
+  h += '<div style="font-size:10px;color:#f59e0b;margin-top:6px;">👆 Forgot to log a day? Just tap it on the calendar to mark/unmark gym — your streak updates honestly.</div>';
   h += '</div>';
 
   /* Per-month bars for selected year */

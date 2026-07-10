@@ -75,7 +75,7 @@ function aeYearNav(module) {
    colorFn(value) -> css color
    labelFn(value) -> text inside cell ('' = none)
    ============================================ */
-function aeCalendarHeatmap(year, month, valueMap, colorFn, labelFn) {
+function aeCalendarHeatmap(year, month, valueMap, colorFn, labelFn, clickFnName) {
   var daysInMonth = new Date(year, month+1, 0).getDate();
   var firstDay    = new Date(year, month, 1).getDay(); /* 0=Sun */
   var todayIso    = aeTodayIso();
@@ -90,10 +90,13 @@ function aeCalendarHeatmap(year, month, valueMap, colorFn, labelFn) {
     var val = valueMap[iso] || 0;
     var col = colorFn(val);
     var isToday = iso === todayIso;
+    var isFuture = iso > todayIso;
     var lbl = labelFn ? labelFn(val) : (val > 0 ? String(val) : '');
-    h += '<div title="' + iso + (val ? ' · ' + val : '') + '" ' +
+    var click = (clickFnName && !isFuture) ? ' onclick="' + clickFnName + '(\'' + iso + '\')"' : '';
+    h += '<div' + click + ' title="' + iso + (val ? ' · ' + val : '') + ((clickFnName && !isFuture)?' — tap to change':'') + '" ' +
       'style="min-height:34px;border-radius:6px;background:' + col + ';' +
       'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+      ((clickFnName && !isFuture) ? 'cursor:pointer;' : '') +
       (isToday ? 'outline:2px solid #a855f7;' : '') + '">' +
       '<span style="font-size:9px;color:' + (val>0?'#fff':'#556080') + ';font-weight:700;">' + d + '</span>' +
       (lbl ? '<span style="font-size:8px;color:#fff;">' + lbl + '</span>' : '') +
@@ -238,6 +241,36 @@ function aeStreak(valueMap) {
   while (valueMap[aeIso(d)]) {
     streak++;
     d.setDate(d.getDate()-1);
+  }
+  return streak;
+}
+
+/* FLEXIBLE streak — rest days allowed!
+   Counts active days in the trailing run, where a gap
+   of up to maxGap missed days does NOT break the streak.
+   Perfect for gym (5-6 days/week with rest days). */
+function aeStreakFlexible(valueMap, maxGap) {
+  maxGap = maxGap || 2;
+  var d = new Date();
+  /* Find the most recent active day within the allowed gap from today */
+  var found = false;
+  for (var i = 0; i <= maxGap; i++) {
+    if (valueMap[aeIso(d)]) { found = true; break; }
+    d.setDate(d.getDate() - 1);
+  }
+  if (!found) return 0;
+
+  /* Walk backwards counting active days; gaps <= maxGap are fine */
+  var streak = 0;
+  var gap = 0;
+  while (gap <= maxGap) {
+    if (valueMap[aeIso(d)]) {
+      streak++;
+      gap = 0;
+    } else {
+      gap++;
+    }
+    d.setDate(d.getDate() - 1);
   }
   return streak;
 }

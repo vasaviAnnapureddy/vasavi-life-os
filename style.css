@@ -913,3 +913,13 @@ label {
     grid-template-columns: 1fr !important;
   }
 }
+/* Rich notes editor placeholder */
+[contenteditable][data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: #556080;
+  pointer-events: none;
+  font-size: 12px;
+}
+[contenteditable] h2 { font-size: 18px; margin: 8px 0 4px; }
+[contenteditable] h3 { font-size: 15px; margin: 6px 0 3px; }
+[contenteditable] ul, [contenteditable] ol { padding-left: 22px; margin: 4px 0; }

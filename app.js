@@ -430,7 +430,7 @@ function openAddExpenseModal() {
     '</div>' +
     '<div class="form-row">' +
       '<label>Category</label>' +
-      '<select id="m-cat">' +
+      '<select id="m-cat" onchange="toggleCustomCat(this)">' +
         '<option>Food</option>' +
         '<option>Gym</option>' +
         '<option>Transport</option>' +
@@ -441,6 +441,8 @@ function openAddExpenseModal() {
         '<option>Entertainment</option>' +
         '<option>Other</option>' +
       '</select>' +
+      '<input id="m-cat-custom" placeholder="What is it? e.g. Rent, Gifts..." ' +
+        'style="display:none;margin-top:6px;border-color:#f59e0b;" />' +
     '</div>' +
     '<div class="form-row">' +
       '<label>Date</label>' +
@@ -454,9 +456,14 @@ function openAddExpenseModal() {
     function() {
       var amount = parseFloat(document.getElementById('m-amount').value);
       if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+      var mcat = document.getElementById('m-cat').value;
+      var mcustom = document.getElementById('m-cat-custom');
+      if (mcat === 'Other' && mcustom && mcustom.value.trim()) {
+        mcat = mcustom.value.trim().charAt(0).toUpperCase() + mcustom.value.trim().slice(1);
+      }
       window.AppState.expenses.push({
         amount: amount,
-        cat:    document.getElementById('m-cat').value,
+        cat:    mcat,
         date:   new Date(
                   document.getElementById('m-date').value
                 ).toDateString(),
@@ -579,6 +586,8 @@ function init() {
   try { if (typeof initNotifications === 'function') initNotifications(); } catch(e) { console.warn('Notifications error:', e); }
 
   var startPage = (window.AppState && window.AppState.currentPage) || 'dashboard';
+  /* Analytics page removed from menu — each module has its own now */
+  if (startPage === 'analytics') startPage = 'dashboard';
   try { goToPage(startPage); } catch(e) { console.warn('goToPage error:', e); goToPage('dashboard'); }
   try { setupPageEvents(); } catch(e) { console.warn('setupPageEvents error:', e); }
 
