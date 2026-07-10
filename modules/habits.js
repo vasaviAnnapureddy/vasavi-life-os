@@ -3,9 +3,57 @@
    modules/habits.js
    ============================================ */
 
+/* ============================================
+   HABIT HISTORY SYNC
+   Old version only stored one week [0..6] which
+   got overwritten forever. Now every tick is
+   stored per-date in habit.history = {'YYYY-MM-DD':1}
+   so monthly + yearly analytics work.
+   ============================================ */
+function habitWeekDates() {
+  var now = new Date();
+  var dates = [];
+  for (var i = 0; i < 7; i++) {
+    var d = new Date(now);
+    d.setDate(now.getDate() - now.getDay() + i);
+    dates.push(aeIso(d));
+  }
+  return dates;
+}
+
+function syncHabitHistory(state) {
+  var habits = state.habits || [];
+  var weekDates = habitWeekDates();
+  habits.forEach(function(habit) {
+    if (!habit.history) habit.history = {};
+    /* One-time migration: copy current week ticks into dated history */
+    if (!habit.historyMigrated) {
+      (habit.week || []).forEach(function(done, i) {
+        if (done) habit.history[weekDates[i]] = 1;
+      });
+      habit.historyMigrated = true;
+    }
+    /* Rebuild week view from history (auto-resets each new week) */
+    habit.week = weekDates.map(function(iso) {
+      return habit.history[iso] ? 1 : 0;
+    });
+  });
+}
+
 function renderHabits() {
   var state       = window.AppState;
   var habits      = state.habits || [];
+  syncHabitHistory(state);
+
+  /* ---- VIEW SWITCHER ---- */
+  var view = state.habitsView || 'week';
+  var vh = '<div class="subtab-bar">';
+  [['week','✅ This Week'],['analytics','📊 Data Analytics']].forEach(function(t) {
+    vh += '<div class="subtab ' + (view===t[0]?'active':'') + '" onclick="switchHabitsView(\'' + t[0] + '\')">' + t[1] + '</div>';
+  });
+  vh += '</div>';
+  if (view === 'analytics') return vh + renderHabitsAnalytics(state);
+
   var todayIdx    = todayIndex();
   var habitsDone  = habits.filter(function(h) {
     return (h.week || [])[todayIdx];
@@ -16,7 +64,7 @@ function renderHabits() {
       }, 0) / habits.length)
     : 0;
 
-  var h = '';
+  var h = vh;
 
   /* ---- STATS ROW ---- */
   h += '<div class="grid-3" style="margin-bottom:14px;">';
@@ -202,13 +250,139 @@ function renderHabits() {
 function toggleHabit(habitIndex, dayIndex) {
   var habits = window.AppState.habits;
   if (!habits[habitIndex]) return;
-  if (!habits[habitIndex].week) {
-    habits[habitIndex].week = [0,0,0,0,0,0,0];
+  var habit = habits[habitIndex];
+  if (!habit.week)    habit.week = [0,0,0,0,0,0,0];
+  if (!habit.history) habit.history = {};
+
+  var iso = habitWeekDates()[dayIndex];
+  if (habit.week[dayIndex]) {
+    habit.week[dayIndex] = 0;
+    delete habit.history[iso];
+  } else {
+    habit.week[dayIndex] = 1;
+    habit.history[iso] = 1;
   }
-  habits[habitIndex].week[dayIndex] =
-    habits[habitIndex].week[dayIndex] ? 0 : 1;
   saveData();
   renderPage();
+}
+
+function switchHabitsView(v)  { window.AppState.habitsView = v; saveData(); renderPage(); }
+function setHabitAnalyticsSel(i) { window.AppState.habitSel = i; saveData(); renderPage(); }
+
+/* ============================================
+   HABITS — DATA ANALYTICS
+   Per-habit monthly calendar, yearly totals,
+   missed days, all-time stats
+   ============================================ */
+function renderHabitsAnalytics(state) {
+  var habits = state.habits || [];
+  var h = '';
+
+  if (habits.length === 0) {
+    return '<div class="empty-state"><div class="emo">📊</div><p>No habits yet. Add habits first, then analytics appear here!</p></div>';
+  }
+
+  /* Habit selector pills */
+  var sel = (typeof state.habitSel === 'number' && state.habitSel < habits.length) ? state.habitSel : 0;
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">';
+  habits.forEach(function(habit, i) {
+    h += '<div onclick="setHabitAnalyticsSel(' + i + ')" style="padding:7px 14px;border-radius:99px;cursor:pointer;font-weight:700;font-size:12px;border:2px solid ' +
+      (sel===i?'#10b981':'var(--border)') + ';background:' + (sel===i?'#10b98122':'var(--card2)') + ';color:' + (sel===i?'#10b981':'#8899bb') + ';">' +
+      escHtml(habit.name) + '</div>';
+  });
+  h += '</div>';
+
+  var habit  = habits[sel];
+  var hist   = habit.history || {};
+  var v      = aeGetView('habits');
+  var streak = aeStreak(hist);
+  var totalDone = Object.keys(hist).filter(function(k){ return hist[k]; }).length;
+
+  /* First tracked date → tracked-days denominator */
+  var isoKeys = Object.keys(hist).sort();
+  var firstIso = isoKeys[0] || aeTodayIso();
+  var trackedDays = Math.max(1, Math.round((new Date(aeTodayIso()) - new Date(firstIso)) / 86400000) + 1);
+
+  h += '<div class="grid-4" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Current Streak</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + totalDone + '</div><div class="stat-label">Total Days Done</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + (trackedDays - totalDone) + '</div><div class="stat-label">Days Missed</div><div class="stat-sub">since ' + firstIso + '</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + pct(totalDone, trackedDays) + '%</div><div class="stat-label">All-Time Rate</div></div>';
+  h += '</div>';
+
+  /* Monthly calendar */
+  var daysInMonth   = new Date(v.y, v.m+1, 0).getDate();
+  var monthDone     = aeActiveDaysInMonth(hist, v.y, v.m);
+  var now           = new Date();
+  var isCurrentMonth= v.y===now.getFullYear() && v.m===now.getMonth();
+  var elapsedDays   = isCurrentMonth ? now.getDate() : daysInMonth;
+
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeMonthNav('habits');
+  h += aeCalendarHeatmap(v.y, v.m, hist, aeDoneColor, function(val){ return val>0?'✓':''; });
+  h += '<div style="font-size:11px;color:#8899bb;margin-top:10px;">' +
+    '<b style="color:#10b981;">' + monthDone + '</b> days done · ' +
+    '<b style="color:#ef4444;">' + Math.max(0, elapsedDays - monthDone) + '</b> days missed · ' +
+    pct(monthDone, elapsedDays) + '% of ' + AE_MONTHS[v.m] + (isCurrentMonth?' so far':'') + '</div>';
+  h += '</div>';
+
+  /* Yearly: per-month done counts */
+  var monthVals = aeMonthTotals(hist, v.y);
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeYearNav('habits');
+  h += aeYearBarChart(monthVals, isCurrentMonth && v.y===now.getFullYear() ? now.getMonth() : -1, '#10b981', function(vv){ return vv+'d'; }, 'habits');
+  h += '<div style="font-size:11px;color:#8899bb;">' + v.y + ' total: <b style="color:#10b981;">' + monthVals.reduce(function(a,b){return a+b;},0) + ' days</b> of ' + escHtml(habit.name) + '</div>';
+  h += '</div>';
+
+  /* All years */
+  var years = aeYearTotals(hist);
+  var yKeys = Object.keys(years).sort();
+  if (yKeys.length) {
+    h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">All Years — ' + escHtml(habit.name) + '</div>';
+    yKeys.forEach(function(yk) {
+      h += aeBarRow(yk, years[yk], 365, '#06b6d4', years[yk] + ' days');
+    });
+    h += '</div>';
+  }
+
+  /* AI summary */
+  h += '<button class="btn-primary" style="width:100%;" onclick="habitAISummary(this,' + sel + ')">🤖 AI Summary — ' + escHtml(habit.name) + ' This Month</button>';
+  h += '<div id="habit-ai-summary" style="display:none;"></div>';
+
+  return h;
+}
+
+function habitAISummary(btn, sel) {
+  var state = window.AppState;
+  var habit = (state.habits||[])[sel];
+  if (!habit) return;
+  var v    = aeGetView('habits');
+  var hist = habit.history || {};
+  var daysInMonth = new Date(v.y, v.m+1, 0).getDate();
+  var now  = new Date();
+  var isCur = v.y===now.getFullYear() && v.m===now.getMonth();
+  var elapsed = isCur ? now.getDate() : daysInMonth;
+  var doneDates = [], missDates = [];
+  for (var d=1; d<=elapsed; d++) {
+    var iso = v.y + '-' + pad(v.m+1) + '-' + pad(d);
+    if (hist[iso]) doneDates.push(iso); else missDates.push(iso);
+  }
+  /* Which weekdays are weakest? */
+  var missByDay = [0,0,0,0,0,0,0];
+  missDates.forEach(function(iso){ missByDay[new Date(iso).getDay()]++; });
+  var worstDay = DAYS_FULL[missByDay.indexOf(Math.max.apply(null, missByDay))];
+
+  var ctx = 'Habit: ' + habit.name + ' (' + (habit.cat||'General') + ') — ' + AE_MONTHS[v.m] + ' ' + v.y + '\n' +
+    'Done ' + doneDates.length + '/' + elapsed + ' days. Missed dates: ' + (missDates.join(', ')||'none') + '\n' +
+    'Current streak: ' + aeStreak(hist) + ' days.';
+  var fallback = '📊 ' + habit.name + ' — ' + AE_MONTHS[v.m] + ' ' + v.y + ':\n' +
+    '• Done ' + doneDates.length + ' of ' + elapsed + ' days (' + pct(doneDates.length, elapsed) + '%)\n' +
+    '• Missed ' + missDates.length + ' days' + (missDates.length ? ' — you skip most on ' + worstDay + 's' : '') + '\n' +
+    '• Current streak: ' + aeStreak(hist) + ' days\n\n' +
+    (pct(doneDates.length, elapsed) >= 80 ? '🔥 Strong! This habit is nearly automatic now.' :
+     pct(doneDates.length, elapsed) >= 50 ? '💪 Building. Plan ' + habit.name + ' at a fixed time on ' + worstDay + 's — that\'s your weak day.' :
+     '⚠️ This habit is slipping. Shrink it: do a 2-minute version daily rather than skipping.');
+  aeAISummary(habit.name + ' — Month Summary', ctx, fallback, btn, 'habit-ai-summary');
 }
 
 function deleteHabit(index) {

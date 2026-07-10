@@ -13,13 +13,14 @@ function renderGym() {
   var h = '';
 
   h += '<div class="subtab-bar">';
-  [['workout','💪 Workout'],['nutrition','🥗 Nutrition'],['period','🌸 Period Yoga']].forEach(function(t) {
+  [['workout','💪 Workout'],['nutrition','🥗 Nutrition'],['period','🌸 Period Yoga'],['analytics','📊 Data Analytics']].forEach(function(t) {
     h += '<div class="subtab ' + (gymTab===t[0]?'active':'') + '" onclick="switchGymTab(\'' + t[0] + '\')">' + t[1] + '</div>';
   });
   h += '</div>';
 
   if (gymTab === 'nutrition') return h + renderNutritionPlan();
   if (gymTab === 'period')    return h + renderPeriodYoga();
+  if (gymTab === 'analytics') return h + renderGymAnalytics(state);
 
   /* Day selector */
   var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -310,6 +311,101 @@ function renderNutritionPlan() {
 function showDayWorkout(dayName) {
   window.AppState.gymViewDay = dayName;
   renderPage();
+}
+
+/* ============================================
+   GYM — DATA ANALYTICS
+   Days this week / month / year, calendar
+   heatmap, per-month bars, all years
+   ============================================ */
+function renderGymAnalytics(state) {
+  var byDate = aeGymByDate(state);
+  var now    = new Date();
+  var h      = '';
+
+  /* This week / month / year counts */
+  var weekCount = 0;
+  for (var i = 0; i < 7; i++) {
+    var wd = new Date(now); wd.setDate(now.getDate()-now.getDay()+i);
+    if (byDate[aeIso(wd)]) weekCount++;
+  }
+  var monthCount = aeActiveDaysInMonth(byDate, now.getFullYear(), now.getMonth());
+  var yearCount  = Object.keys(byDate).filter(function(iso){ return parseInt(iso.substring(0,4))===now.getFullYear(); }).length;
+  var streak     = aeStreak(byDate);
+
+  h += '<div class="grid-4" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#f97316"><div class="stat-value">' + weekCount + '/7</div><div class="stat-label">This Week</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + monthCount + '</div><div class="stat-label">This Month</div><div class="stat-sub">' + AE_MONTHS_SHORT[now.getMonth()] + '</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + yearCount + '</div><div class="stat-label">This Year</div><div class="stat-sub">' + now.getFullYear() + '</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Day Streak</div></div>';
+  h += '</div>';
+
+  /* Monthly calendar of gym days */
+  var v = aeGetView('gym');
+  var vMonthCount = aeActiveDaysInMonth(byDate, v.y, v.m);
+  var isCur = v.y===now.getFullYear() && v.m===now.getMonth();
+  var elapsed = isCur ? now.getDate() : new Date(v.y, v.m+1, 0).getDate();
+
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeMonthNav('gym');
+  h += aeCalendarHeatmap(v.y, v.m, byDate, function(val){ return val>0?'#f97316':'#1a1a35'; }, function(val){ return val>0?'💪':''; });
+  h += '<div style="font-size:11px;color:#8899bb;margin-top:10px;">Went to gym <b style="color:#f97316;">' + vMonthCount + '</b> days in ' + AE_MONTHS[v.m] +
+    (isCur?' so far':'') + ' · missed ' + Math.max(0, elapsed - vMonthCount) + ' days</div>';
+  h += '</div>';
+
+  /* Per-month bars for selected year */
+  var monthVals = aeMonthTotals(byDate, v.y);
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeYearNav('gym');
+  h += aeYearBarChart(monthVals, (v.y===now.getFullYear()?now.getMonth():-1), '#f97316', function(vv){ return vv+'d'; }, 'gym');
+  h += '<div style="font-size:11px;color:#8899bb;">' + v.y + ' total: <b style="color:#f97316;">' + monthVals.reduce(function(a,b){return a+b;},0) + ' gym days</b></div>';
+  h += '</div>';
+
+  /* All years */
+  var years = aeYearTotals(byDate);
+  var yKeys = Object.keys(years).sort();
+  if (yKeys.length) {
+    h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">All Years</div>';
+    yKeys.forEach(function(yk) {
+      h += aeBarRow(yk, years[yk], 365, '#06b6d4', years[yk] + ' days');
+    });
+    h += '</div>';
+  } else {
+    h += '<div class="empty-state"><div class="emo">🏋️</div><p>No gym sessions logged yet.<br>Log today\'s session in the Workout tab!</p></div>';
+  }
+
+  /* AI summary */
+  h += '<button class="btn-primary" style="width:100%;" onclick="gymAISummary(this)">🤖 AI Summary — My Gym Consistency</button>';
+  h += '<div id="gym-ai-summary" style="display:none;"></div>';
+
+  return h;
+}
+
+function gymAISummary(btn) {
+  var state  = window.AppState;
+  var byDate = aeGymByDate(state);
+  var now    = new Date();
+  var v      = aeGetView('gym');
+  var monthCount = aeActiveDaysInMonth(byDate, v.y, v.m);
+  var isCur   = v.y===now.getFullYear() && v.m===now.getMonth();
+  var elapsed = isCur ? now.getDate() : new Date(v.y, v.m+1, 0).getDate();
+
+  /* Which weekdays does she go / skip */
+  var goByDay = [0,0,0,0,0,0,0];
+  Object.keys(byDate).forEach(function(iso){ goByDay[new Date(iso).getDay()]++; });
+  var bestDay = DAYS_FULL[goByDay.indexOf(Math.max.apply(null, goByDay))];
+
+  var ctx = 'Gym log for ' + AE_MONTHS[v.m] + ' ' + v.y + ': went ' + monthCount + '/' + elapsed + ' days. ' +
+    'Streak: ' + aeStreak(byDate) + '. Gym visits per weekday (Sun..Sat): ' + goByDay.join(',') + '. ' +
+    'Her plan: gym 6 days/week (Sunday rest), 7-9 AM slot.';
+  var fallback = '💪 Gym — ' + AE_MONTHS[v.m] + ' ' + v.y + ':\n' +
+    '• Went ' + monthCount + ' of ' + elapsed + ' days (' + pct(monthCount, elapsed) + '%)\n' +
+    '• Current streak: ' + aeStreak(byDate) + ' days\n' +
+    '• Your most reliable gym day: ' + bestDay + '\n\n' +
+    (pct(monthCount, elapsed) >= 70 ? '🔥 Excellent consistency — your body is changing whether you see it yet or not.' :
+     pct(monthCount, elapsed) >= 40 ? '💪 Decent month. Lay your gym clothes out the night before — remove the morning decision.' :
+     '⚠️ Gym slipped this month. Restart small: just show up 3 days this week, even for 20 minutes.');
+  aeAISummary('Gym Summary — ' + AE_MONTHS[v.m] + ' ' + v.y, ctx, fallback, btn, 'gym-ai-summary');
 }
 
 console.log('gym.js loaded OK');

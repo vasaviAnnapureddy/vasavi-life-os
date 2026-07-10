@@ -316,6 +316,25 @@ function buildAIContext() {
   var monthExpenses = (state.expenses || []).filter(function(e){ var d=new Date(e.date); return d.getMonth()===new Date().getMonth(); });
   var monthSpend = monthExpenses.reduce(function(a,e){ return a+(e.amount||0); }, 0);
 
+  /* ---- REAL WEEK-BY-DAY DATA so weekly analysis is accurate ---- */
+  var weekLines = '';
+  var weekTotal = 0, gymWeek = 0, spendWeek = 0, langWeek = 0;
+  try {
+    var focusMap = aeFocusByDate(state);
+    var gymMap   = aeGymByDate(state);
+    var spendMap = aeSpendByDate(state);
+    var langMap  = aeLangByDate(state);
+    var now = new Date();
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(now); d.setDate(now.getDate() - now.getDay() + i);
+      if (d > now) break;
+      var iso = aeIso(d);
+      var fm = focusMap[iso]||0, gm = gymMap[iso]?1:0, sm = spendMap[iso]||0, lm = langMap[iso]||0;
+      weekTotal += fm; gymWeek += gm; spendWeek += sm; langWeek += (lm>0?1:0);
+      weekLines += '  ' + DAYS_FULL[d.getDay()] + ' (' + iso + '): focus ' + fm + 'm, gym ' + (gm?'yes':'no') + ', spent ₹' + sm + ', language ' + lm + 'm\n';
+    }
+  } catch(e) { /* analytics engine not loaded */ }
+
   return 'You are Vasavi\'s personal AI mentor inside her Life OS. You know her personally.\n\n' +
     'ABOUT VASAVI:\n' +
     '- Name: Vasavi | Location: Bengaluru, India\n' +
@@ -333,6 +352,9 @@ function buildAIContext() {
     '- Jobs applied total: ' + jobs.length + '\n' +
     '- Month spend: ₹' + monthSpend + '\n' +
     '- Day number: ' + (state.dayNumber || 1) + '\n\n' +
+    'THIS WEEK — DAY BY DAY (use this for any weekly analysis):\n' +
+    (weekLines || '  (no data this week yet)\n') +
+    'Week totals: focus ' + weekTotal + ' mins (target 840), gym ' + gymWeek + ' days, spent ₹' + spendWeek + ', language practiced ' + langWeek + ' days\n\n' +
     'TONE RULES:\n' +
     '- Use her name "Vasavi" naturally\n' +
     '- Be warm but direct — mentor-friend who knows her\n' +
@@ -365,7 +387,25 @@ function callClaudeAPI(systemPrompt, userMsg, callback) {
   } else if (t.includes('motivat') || t.includes('tired') || t.includes('stuck')) {
     reply = 'Vasavi, motivation comes AFTER action, not before.\n\nYou built a full Life OS. You completed ' + dsDone + ' DS days. You\'re tracking habits, finance, everything.\n\nMost people just talk about wanting a DS job. You\'re building systems for it.\n\nOpen the Focus Timer. 25 minutes. Just start.';
   } else if (t.includes('week') || t.includes('summary')) {
-    reply = 'This week snapshot:\n\n• DS days done: ' + dsDone + '/8\n• Life Score today: ' + ls + '\n• Jobs applied: ' + (state.jobs||[]).length + '\n\nCheck the Analytics tab → Weekly for full breakdown with charts.';
+    /* Real week-by-day breakdown */
+    var wk = '';
+    var wkTotal = 0, wkGym = 0, wkSpend = 0;
+    try {
+      var fMap = aeFocusByDate(state), gMap = aeGymByDate(state), sMap = aeSpendByDate(state);
+      var nw = new Date();
+      for (var wi = 0; wi < 7; wi++) {
+        var wd = new Date(nw); wd.setDate(nw.getDate() - nw.getDay() + wi);
+        if (wd > nw) break;
+        var wiso = aeIso(wd);
+        var fmm = fMap[wiso]||0;
+        wkTotal += fmm; wkGym += (gMap[wiso]?1:0); wkSpend += (sMap[wiso]||0);
+        wk += '• ' + DAYS_SHORT[wd.getDay()] + ': ' + fmm + 'm focus' + (gMap[wiso]?' · 💪 gym':'') + ((sMap[wiso]||0)>0?' · ₹'+sMap[wiso]:'') + '\n';
+      }
+    } catch(e) {}
+    reply = 'Your REAL week, Vasavi:\n\n' + (wk||'No data logged yet this week.\n') +
+      '\nWeek totals: ' + wkTotal + ' focus mins (target 840) · ' + wkGym + ' gym days · ₹' + wkSpend + ' spent\n' +
+      'DS days done: ' + dsDone + '/8 · Jobs applied: ' + (state.jobs||[]).length + '\n\n' +
+      (wkTotal >= 600 ? '🔥 Strong week. Keep the same rhythm.' : wkTotal > 0 ? 'Below target — block 10 AM–12:30 PM tomorrow for deep work.' : 'Empty week so far. One Pomodoro today changes the trend.');
   } else {
     reply = 'Vasavi, I see you. Score today: ' + ls + '. DS progress: ' + dsDone + '/8.\n\n' + (ls >= 70 ? 'You\'re doing great. Keep that momentum.' : 'One step at a time. What do you need help with right now?');
   }

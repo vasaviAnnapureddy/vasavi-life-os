@@ -18,6 +18,15 @@ function renderFinance() {
   var thisMonth  = now.getMonth();
   var thisYear   = now.getFullYear();
 
+  /* ---- VIEW SWITCHER ---- */
+  var view = state.financeView || 'main';
+  var vh = '<div class="subtab-bar">';
+  [['main','💰 Expenses'],['analytics','📊 Data Analytics']].forEach(function(t) {
+    vh += '<div class="subtab ' + (view===t[0]?'active':'') + '" onclick="switchFinanceView(\'' + t[0] + '\')">' + t[1] + '</div>';
+  });
+  vh += '</div>';
+  if (view === 'analytics') return vh + renderFinanceAnalytics(state);
+
   var monthExp   = expenses.filter(function(e) {
     var d = new Date(e.date || Date.now());
     return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
@@ -33,7 +42,7 @@ function renderFinance() {
     ? Math.round(totalMonth / now.getDate())
     : 0;
 
-  var h = '';
+  var h = vh;
 
   /* ---- STATS ---- */
   h += '<div class="grid-4" style="margin-bottom:14px;">';
@@ -262,6 +271,219 @@ function deleteExpense(idx) {
   window.AppState.expenses.splice(idx, 1);
   saveData();
   renderPage();
+}
+
+function switchFinanceView(v) { window.AppState.financeView = v; saveData(); renderPage(); }
+function switchFinanceAnalyticsTab(t) { window.AppState.financeAnalyticsTab = t; saveData(); renderPage(); }
+
+/* ============================================
+   FINANCE — DATA ANALYTICS (Google Pay style)
+   Pick any month → total, category breakdown,
+   compare with last month. Yearly → per-month
+   and per-year totals. AI summary of where to
+   reduce.
+   ============================================ */
+function financeMonthExpenses(expenses, year, month) {
+  return expenses.filter(function(e) {
+    var d = new Date(e.date || Date.now());
+    return !isNaN(d) && d.getFullYear() === year && d.getMonth() === month;
+  });
+}
+
+function financeCatTotals(list) {
+  var byCat = {};
+  list.forEach(function(e) {
+    var c = e.cat || 'Other';
+    byCat[c] = (byCat[c]||0) + (e.amount||0);
+  });
+  return byCat;
+}
+
+function renderFinanceAnalytics(state) {
+  var expenses = state.expenses || [];
+  var tab = state.financeAnalyticsTab || 'monthly';
+  var h = '';
+
+  h += '<div class="subtab-bar">';
+  [['monthly','📈 Monthly'],['yearly','🏆 Yearly']].forEach(function(t) {
+    h += '<div class="subtab ' + (tab===t[0]?'active':'') + '" onclick="switchFinanceAnalyticsTab(\'' + t[0] + '\')">' + t[1] + '</div>';
+  });
+  h += '</div>';
+
+  if (expenses.length === 0) {
+    return h + '<div class="empty-state"><div class="emo">💰</div><p>No expenses yet. Add expenses first, then your money analytics appear here!</p></div>';
+  }
+
+  if (tab === 'monthly') {
+    var v = aeGetView('finance');
+    var monthExp = financeMonthExpenses(expenses, v.y, v.m);
+    var total    = monthExp.reduce(function(a,e){ return a+(e.amount||0); }, 0);
+
+    /* Previous month comparison */
+    var pm = v.m===0 ? 11 : v.m-1;
+    var py = v.m===0 ? v.y-1 : v.y;
+    var prevTotal = financeMonthExpenses(expenses, py, pm).reduce(function(a,e){ return a+(e.amount||0); }, 0);
+    var diff = total - prevTotal;
+
+    h += '<div class="card" style="margin-bottom:14px;">';
+    h += aeMonthNav('finance');
+
+    /* Big Google-Pay-style total */
+    h += '<div style="text-align:center;padding:10px 0 16px;">';
+    h += '<div style="font-size:11px;color:#8899bb;">Total spent in ' + AE_MONTHS[v.m] + '</div>';
+    h += '<div style="font-size:40px;font-weight:900;color:#f59e0b;">₹' + formatRupees(total) + '</div>';
+    h += '<div style="font-size:11px;color:#8899bb;">' + monthExp.length + ' transactions';
+    if (prevTotal > 0) {
+      h += ' · <span style="color:' + (diff>0?'#ef4444':'#10b981') + ';font-weight:700;">' +
+        (diff>0?'▲ ₹'+formatRupees(diff)+' more':'▼ ₹'+formatRupees(-diff)+' less') + ' than ' + AE_MONTHS[pm] + '</span>';
+    }
+    h += '</div></div>';
+
+    /* Category breakdown with % */
+    var byCat  = financeCatTotals(monthExp);
+    var sorted = Object.keys(byCat).sort(function(a,b){ return byCat[b]-byCat[a]; });
+    if (sorted.length) {
+      h += '<div style="border-top:1px solid #1a1a35;padding-top:12px;">';
+      h += '<div class="card-header">Where the money went</div>';
+      sorted.forEach(function(cat) {
+        var col = CAT_COLORS[cat] || '#64748b';
+        var share = pct(byCat[cat], total || 1);
+        h += '<div class="progress-wrap">' +
+          '<div class="progress-label">' +
+            '<span style="color:' + col + '">' + cat + ' <span style="color:#556080;">(' + share + '%)</span></span>' +
+            '<span>₹' + formatRupees(byCat[cat]) + '</span>' +
+          '</div>' +
+          '<div class="progress-bar"><div class="progress-fill" style="width:' + share + '%;background:' + col + '"></div></div>' +
+        '</div>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
+
+    /* Daily spend heatmap for the month */
+    var spendMap = aeSpendByDate(state);
+    h += '<div class="card" style="margin-bottom:14px;">';
+    h += '<div class="card-header">Daily Spending Heatmap</div>';
+    h += aeCalendarHeatmap(v.y, v.m, spendMap, aeSpendColor, function(val){ return val>0?'₹'+(val>=1000?Math.round(val/100)/10+'k':val):''; });
+    h += '<div style="font-size:9px;color:#8899bb;margin-top:8px;">Green = light spend · Orange = ₹500+ · Red = ₹1000+ day</div>';
+    h += '</div>';
+
+    /* Biggest single expenses */
+    var top5 = monthExp.slice().sort(function(a,b){ return (b.amount||0)-(a.amount||0); }).slice(0,5);
+    if (top5.length) {
+      h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">Biggest Expenses This Month</div>';
+      top5.forEach(function(e) {
+        h += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1a1a35;font-size:11px;">';
+        h += '<span>' + escHtml(e.note||e.cat) + ' <span style="color:' + (CAT_COLORS[e.cat]||'#888') + ';">· ' + escHtml(e.cat||'') + '</span></span>';
+        h += '<span style="color:#f59e0b;font-weight:800;">₹' + formatRupees(e.amount) + '</span></div>';
+      });
+      h += '</div>';
+    }
+
+    h += '<button class="btn-primary" style="width:100%;" onclick="financeMonthAISummary(this)">🤖 AI Summary — Where To Reduce In ' + AE_MONTHS[v.m] + '?</button>';
+    h += '<div id="finance-ai-summary" style="display:none;"></div>';
+  }
+
+  if (tab === 'yearly') {
+    var vy = aeGetView('finance');
+    var spendMap2 = aeSpendByDate(state);
+    var monthVals = aeMonthTotals(spendMap2, vy.y);
+    var yearTotal = monthVals.reduce(function(a,b){ return a+b; }, 0);
+
+    h += '<div class="card" style="margin-bottom:14px;">';
+    h += aeYearNav('finance');
+    h += '<div style="text-align:center;padding:6px 0 14px;">';
+    h += '<div style="font-size:11px;color:#8899bb;">Total spent in ' + vy.y + '</div>';
+    h += '<div style="font-size:36px;font-weight:900;color:#f59e0b;">₹' + formatRupees(yearTotal) + '</div>';
+    h += '<div style="font-size:11px;color:#8899bb;">Average ₹' + formatRupees(Math.round(yearTotal/12)) + ' / month</div>';
+    h += '</div>';
+    h += aeYearBarChart(monthVals, vy.y===new Date().getFullYear()?new Date().getMonth():-1, '#f59e0b', function(vv){ return '₹'+(vv>=1000?Math.round(vv/1000)+'k':vv); }, 'finance', 'financeAnalyticsTab');
+    h += '</div>';
+
+    /* Year category breakdown */
+    var yearExp = expenses.filter(function(e){ var d=new Date(e.date||Date.now()); return !isNaN(d)&&d.getFullYear()===vy.y; });
+    var byCatY  = financeCatTotals(yearExp);
+    var sortedY = Object.keys(byCatY).sort(function(a,b){ return byCatY[b]-byCatY[a]; });
+    if (sortedY.length) {
+      h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">' + vy.y + ' by Category</div>';
+      sortedY.forEach(function(cat) {
+        var col = CAT_COLORS[cat] || '#64748b';
+        h += aeBarRow(cat + ' (' + pct(byCatY[cat], yearTotal||1) + '%)', byCatY[cat], yearTotal||1, col, '₹' + formatRupees(byCatY[cat]));
+      });
+      h += '</div>';
+    }
+
+    /* All years */
+    var years = aeYearTotals(spendMap2);
+    var yKeys = Object.keys(years).sort();
+    if (yKeys.length) {
+      var maxY = Math.max.apply(null, yKeys.map(function(k){ return years[k]; }));
+      h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">All Years</div>';
+      yKeys.forEach(function(yk) {
+        h += aeBarRow(yk, years[yk], maxY, '#06b6d4', '₹' + formatRupees(years[yk]));
+      });
+      h += '</div>';
+    }
+
+    h += '<button class="btn-primary" style="width:100%;" onclick="financeYearAISummary(this)">🤖 AI Summary — How To Improve Next Year?</button>';
+    h += '<div id="finance-ai-summary-y" style="display:none;"></div>';
+  }
+
+  return h;
+}
+
+function financeMonthAISummary(btn) {
+  var state = window.AppState;
+  var v = aeGetView('finance');
+  var monthExp = financeMonthExpenses(state.expenses||[], v.y, v.m);
+  var total = monthExp.reduce(function(a,e){ return a+(e.amount||0); }, 0);
+  var byCat = financeCatTotals(monthExp);
+  var sorted = Object.keys(byCat).sort(function(a,b){ return byCat[b]-byCat[a]; });
+
+  var pm = v.m===0?11:v.m-1, py = v.m===0?v.y-1:v.y;
+  var prevTotal = financeMonthExpenses(state.expenses||[], py, pm).reduce(function(a,e){ return a+(e.amount||0); }, 0);
+
+  var catLines = sorted.map(function(c){ return c + ': ₹' + byCat[c] + ' (' + pct(byCat[c], total||1) + '%)'; }).join('\n');
+  var txLines = monthExp.map(function(e){ return aeIso(new Date(e.date)) + ' · ' + (e.note||e.cat) + ' · ₹' + e.amount + ' (' + e.cat + ')'; }).join('\n');
+  var ctx = 'Spending for ' + AE_MONTHS[v.m] + ' ' + v.y + ': total ₹' + total + ' across ' + monthExp.length +
+    ' transactions. Previous month total: ₹' + prevTotal + '.\nBy category:\n' + catLines + '\nAll transactions:\n' + txLines;
+
+  var topCat = sorted[0];
+  var fallback = '💰 ' + AE_MONTHS[v.m] + ' ' + v.y + ' money summary:\n' +
+    '• Total: ₹' + formatRupees(total) + (prevTotal>0 ? ' (' + (total>prevTotal?'+':'') + formatRupees(total-prevTotal) + ' vs last month)' : '') + '\n' +
+    (topCat ? '• Biggest drain: ' + topCat + ' at ₹' + formatRupees(byCat[topCat]) + ' = ' + pct(byCat[topCat], total||1) + '% of everything\n' : '') +
+    (sorted[1] ? '• Second: ' + sorted[1] + ' (₹' + formatRupees(byCat[sorted[1]]) + ')\n' : '') + '\n' +
+    'Where to reduce:\n' +
+    (topCat ? '1. Cap ' + topCat + ' at ₹' + formatRupees(Math.round(byCat[topCat]*0.8)) + ' next month (20% cut).\n' : '') +
+    (byCat['Subscriptions'] ? '2. Review Subscriptions (₹' + formatRupees(byCat['Subscriptions']) + ') — cancel anything unused 30 days.\n' : '') +
+    (byCat['Entertainment'] || byCat['Shopping'] ? '3. ' + (byCat['Shopping']?'Shopping':'Entertainment') + ' is a want, not a need — set a fixed weekly limit.\n' : '') +
+    '\nRule for next month: log every expense same-day, review this page every Sunday.';
+  aeAISummary('Money Summary — ' + AE_MONTHS[v.m] + ' ' + v.y, ctx, fallback, btn, 'finance-ai-summary');
+}
+
+function financeYearAISummary(btn) {
+  var state = window.AppState;
+  var vy = aeGetView('finance');
+  var yearExp = (state.expenses||[]).filter(function(e){ var d=new Date(e.date||Date.now()); return !isNaN(d)&&d.getFullYear()===vy.y; });
+  var total = yearExp.reduce(function(a,e){ return a+(e.amount||0); }, 0);
+  var byCat = financeCatTotals(yearExp);
+  var sorted = Object.keys(byCat).sort(function(a,b){ return byCat[b]-byCat[a]; });
+  var monthVals = aeMonthTotals(aeSpendByDate(state), vy.y);
+  var maxM = monthVals.indexOf(Math.max.apply(null, monthVals));
+
+  var ctx = 'Spending for year ' + vy.y + ': total ₹' + total + '.\nPer month: ' +
+    monthVals.map(function(m,i){ return AE_MONTHS_SHORT[i] + ' ₹' + m; }).join(', ') + '\nBy category:\n' +
+    sorted.map(function(c){ return c + ': ₹' + byCat[c] + ' (' + pct(byCat[c], total||1) + '%)'; }).join('\n');
+
+  var fallback = '🏆 ' + vy.y + ' money summary:\n' +
+    '• Total: ₹' + formatRupees(total) + ' (avg ₹' + formatRupees(Math.round(total/12)) + '/month)\n' +
+    (sorted[0] ? '• Top category all year: ' + sorted[0] + ' (₹' + formatRupees(byCat[sorted[0]]) + ')\n' : '') +
+    '• Most expensive month: ' + AE_MONTHS[maxM] + ' (₹' + formatRupees(monthVals[maxM]||0) + ')\n\n' +
+    'Improve next year:\n' +
+    '1. Set a monthly budget of ₹' + formatRupees(Math.round((total/12)*0.85)) + ' (15% below your average).\n' +
+    (sorted[0] ? '2. ' + sorted[0] + ' alone was ' + pct(byCat[sorted[0]], total||1) + '% — plan it weekly instead of impulse spending.\n' : '') +
+    '3. Move the saved difference into your Savings goals on the 1st of each month.';
+  aeAISummary('Year Summary — ' + vy.y, ctx, fallback, btn, 'finance-ai-summary-y');
 }
 
 console.log('finance.js loaded OK');

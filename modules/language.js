@@ -336,22 +336,123 @@ function renderLangNotebook(state, langs) {
 }
 
 /* ============================================
-   TAB 5: AI TUTOR — friend + teacher mode
+   TAB 5: AI TUTOR — ChatGPT-style chats
+   Every conversation is its own chat with a
+   title + date. Pick from history like ChatGPT.
+   Daily English Practice creates one chat/day.
    ============================================ */
-function renderLangTutor(state, langs) {
-  var h = '';
-  var selLang = state.langTutorLang || Object.keys(langs)[0] || 'en';
-  /* langTutorMsgs might be object or array — normalise to array */
-  var rawMsgs = state.langTutorMsgs;
-  var tutorMsgs = Array.isArray(rawMsgs) ? rawMsgs : [];
-  var l = langs[selLang] || { name: selLang, flag: '🌐', color: '#a855f7' };
+function ensureLangChats(state) {
+  if (!Array.isArray(state.langChats)) state.langChats = [];
+  /* Migrate the old single conversation into a chat once */
+  if (Array.isArray(state.langTutorMsgs) && state.langTutorMsgs.length > 0) {
+    state.langChats.push({
+      id:       'legacy-' + Date.now(),
+      lang:     state.langTutorLang || 'en',
+      title:    'Older conversation',
+      created:  aeTodayIso(),
+      messages: state.langTutorMsgs
+    });
+    state.langTutorMsgs = [];
+    saveData();
+  }
+  return state.langChats;
+}
 
-  /* Language selector */
-  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">';
+function getActiveChat(state) {
+  var chats = ensureLangChats(state);
+  if (!state.langActiveChat) return null;
+  return chats.find(function(c){ return c.id === state.langActiveChat; }) || null;
+}
+
+/* Streak of consecutive days with an English chat that has real talk (2+ messages) */
+function englishPracticeStreak(state) {
+  var days = {};
+  ensureLangChats(state).forEach(function(c) {
+    if (c.lang === 'en' && (c.messages||[]).length >= 2) days[c.created] = 1;
+  });
+  return aeStreak(days);
+}
+
+function renderLangTutor(state, langs) {
+  var chat = getActiveChat(state);
+  if (!chat) return renderChatList(state, langs);
+  return renderChatView(state, langs, chat);
+}
+
+/* ---- CHAT HISTORY LIST (like ChatGPT sidebar) ---- */
+function renderChatList(state, langs) {
+  var h = '';
+  var chats = ensureLangChats(state);
+  var streak = englishPracticeStreak(state);
+  var todayIso = aeTodayIso();
+  var hasEnglishToday = chats.some(function(c){ return c.lang==='en' && c.created===todayIso && (c.messages||[]).length>=2; });
+
+  /* Daily English Practice banner */
+  h += '<div style="background:linear-gradient(135deg,#0a1533,#0a1020);border:1px solid #3b82f6;border-radius:12px;padding:14px;margin-bottom:14px;">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+  h += '<div style="font-size:14px;font-weight:800;">🇬🇧 Daily English Speaking</div>';
+  h += '<div style="text-align:right;"><span style="font-size:20px;font-weight:900;color:#3b82f6;">🔥 ' + streak + '</span><span style="font-size:10px;color:#8899bb;"> day streak</span></div>';
+  h += '</div>';
+  h += '<div style="font-size:11px;color:#8899bb;margin-bottom:10px;">' +
+    (hasEnglishToday ? '✅ Done today! Come back tomorrow to keep the streak.' : 'Speak English with your tutor every single day. Voice or text — just talk!') + '</div>';
+  h += '<button class="btn-primary" style="width:100%;" onclick="startDailyEnglish()">' +
+    (hasEnglishToday ? '💬 Continue Today\'s English Chat' : '🎙️ Start Today\'s English Practice') + '</button>';
+  h += '</div>';
+
+  /* New chat per language */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">+ New Chat</div>';
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
   Object.keys(langs).forEach(function(k) {
     var lang = langs[k];
-    h += '<div onclick="setTutorLang(\'' + k + '\')" style="padding:7px 14px;border-radius:99px;cursor:pointer;font-weight:700;font-size:12px;border:2px solid ' + (selLang===k?lang.color:'var(--border)') + ';background:' + (selLang===k?lang.color+'22':'var(--card2)') + ';color:' + (selLang===k?lang.color:'#8899bb') + ';">' + lang.flag + ' ' + escHtml(lang.name) + '</div>';
+    h += '<div onclick="newLangChat(\'' + k + '\')" style="padding:7px 14px;border-radius:99px;cursor:pointer;font-weight:700;font-size:12px;border:2px solid ' + lang.color + ';background:' + lang.color + '22;color:' + lang.color + ';">' + lang.flag + ' ' + escHtml(lang.name) + '</div>';
   });
+  h += '</div></div>';
+
+  /* Chat history grouped by date — newest first */
+  h += '<div class="card"><div class="card-header">💬 Chat History (' + chats.length + ')</div>';
+  if (chats.length === 0) {
+    h += '<div class="empty-state" style="padding:20px;"><div class="emo">💬</div><p>No chats yet. Start today\'s English practice above!</p></div>';
+  } else {
+    var sorted = chats.slice().sort(function(a,b){ return (b.created||'').localeCompare(a.created||''); });
+    var lastDate = '';
+    sorted.forEach(function(c) {
+      var l = langs[c.lang] || { flag:'🌐', color:'#a855f7', name:c.lang };
+      if (c.created !== lastDate) {
+        lastDate = c.created;
+        var dLabel = c.created===todayIso ? 'Today' : new Date(c.created).toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+        h += '<div style="font-size:10px;color:#556080;font-weight:800;margin:10px 0 4px;text-transform:uppercase;">' + dLabel + '</div>';
+      }
+      var preview = ((c.messages||[])[0]||{}).text || '';
+      h += '<div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;background:var(--card2);border:1px solid var(--border);margin-bottom:5px;cursor:pointer;" onclick="openLangChat(\'' + c.id + '\')">';
+      h += '<span style="font-size:18px;">' + l.flag + '</span>';
+      h += '<div style="flex:1;min-width:0;">';
+      h += '<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(c.title||'Chat') + '</div>';
+      h += '<div style="font-size:10px;color:#556080;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (c.messages||[]).length + ' messages' + (preview?' · '+escHtml(preview.substring(0,40)):'') + '</div>';
+      h += '</div>';
+      h += '<button onclick="event.stopPropagation();deleteLangChat(\'' + c.id + '\')" style="background:none;border:none;color:#556080;cursor:pointer;font-size:14px;">✕</button>';
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+
+  return h;
+}
+
+/* ---- SINGLE CHAT VIEW ---- */
+function renderChatView(state, langs, chat) {
+  var h = '';
+  var l = langs[chat.lang] || { name: chat.lang, flag: '🌐', color: '#a855f7', id: chat.lang };
+  var tutorMsgs = chat.messages || [];
+
+  /* Back + title bar */
+  h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  h += '<button class="btn-ghost" style="padding:6px 12px;" onclick="closeLangChat()">← All Chats</button>';
+  h += '<div style="flex:1;min-width:0;">';
+  h += '<div style="font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + l.flag + ' ' + escHtml(chat.title||'Chat') + '</div>';
+  h += '<div style="font-size:10px;color:#556080;">' + chat.created + ' · ' + escHtml(l.name) + '</div>';
+  h += '</div>';
+  h += '<button class="btn-ghost" style="padding:6px 10px;font-size:10px;" onclick="renameLangChat(\'' + chat.id + '\')">✏️ Rename</button>';
   h += '</div>';
 
   /* Tutor intro card */
@@ -404,7 +505,7 @@ function renderLangTutor(state, langs) {
   /* Voice conversation button - BIG and clear */
   var isConvOn = (typeof convActive !== 'undefined' && convActive);
   h += '<div style="margin-bottom:10px;">';
-  h += '<button onclick="toggleLangConversation(\'' + l.id + '\')" ';
+  h += '<button onclick="toggleLangConversation(\'' + chat.lang + '\')" ';
   h += 'style="width:100%;padding:14px;border-radius:12px;border:2px solid #a855f7;';
   h += 'background:' + (isConvOn ? '#a855f7' : '#1a0533') + ';';
   h += 'color:' + (isConvOn ? '#fff' : '#a855f7') + ';';
@@ -430,7 +531,7 @@ function renderLangTutor(state, langs) {
 
   /* Save to notebook button */
   if (tutorMsgs.length > 2) {
-    h += '<button class="btn-ghost" onclick="saveTutorToNotebook(\'' + selLang + '\')" style="width:100%;">📓 Save This Conversation to Notebook</button>';
+    h += '<button class="btn-ghost" onclick="saveTutorToNotebook(\'' + chat.lang + '\')" style="width:100%;">📓 Save This Conversation to Notebook</button>';
   }
 
   return h;
@@ -545,11 +646,66 @@ function deleteLangNbEntry(lang, idx) {
 function setLangNbFilter(lang) { window.AppState.langNbFilter=lang; saveData(); renderPage(); }
 
 /* ============================================
-   TUTOR ACTIONS
+   TUTOR ACTIONS — chat based
    ============================================ */
 function switchLangTab(tab)    { window.AppState.langTab=tab; saveData(); renderPage(); }
 function setTutorLang(lang)    { window.AppState.langTutorLang=lang; saveData(); renderPage(); }
-function clearTutorChat()      { window.AppState.langTutorMsgs=[]; saveData(); renderPage(); }
+
+function newLangChat(lang, title) {
+  var state = window.AppState;
+  var chats = ensureLangChats(state);
+  var langName = (getLangs(state)[lang]||{name:lang}).name;
+  var chat = {
+    id:       'chat-' + Date.now(),
+    lang:     lang,
+    title:    title || ('New ' + langName + ' chat'),
+    created:  aeTodayIso(),
+    messages: []
+  };
+  chats.push(chat);
+  state.langActiveChat = chat.id;
+  saveData(); renderPage();
+  return chat;
+}
+
+function startDailyEnglish() {
+  var state = window.AppState;
+  var todayIso = aeTodayIso();
+  var chats = ensureLangChats(state);
+  /* Reuse today's English practice chat if it exists */
+  var existing = chats.find(function(c){ return c.lang==='en' && c.created===todayIso && (c.title||'').indexOf('English Practice')===0; });
+  if (existing) {
+    state.langActiveChat = existing.id;
+    saveData(); renderPage();
+    return;
+  }
+  var dLabel = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+  newLangChat('en', 'English Practice — ' + dLabel);
+}
+
+function openLangChat(id)  { window.AppState.langActiveChat = id;   saveData(); renderPage(); }
+function closeLangChat()   { window.AppState.langActiveChat = null; saveData(); renderPage(); }
+
+function deleteLangChat(id) {
+  if (!confirm('Delete this chat? Its history will be gone.')) return;
+  var state = window.AppState;
+  state.langChats = ensureLangChats(state).filter(function(c){ return c.id !== id; });
+  if (state.langActiveChat === id) state.langActiveChat = null;
+  saveData(); renderPage();
+}
+
+function renameLangChat(id) {
+  var chat = ensureLangChats(window.AppState).find(function(c){ return c.id === id; });
+  if (!chat) return;
+  var name = prompt('Chat name:', chat.title || '');
+  if (name && name.trim()) { chat.title = name.trim(); saveData(); renderPage(); }
+}
+
+function clearTutorChat() {
+  var chat = getActiveChat(window.AppState);
+  if (chat) chat.messages = [];
+  saveData(); renderPage();
+}
 
 function sendTutorFromInput() {
   var el=document.getElementById('tutor-input');
@@ -560,37 +716,35 @@ function sendTutorFromInput() {
 
 function sendTutorMsg(msg) {
   var state = window.AppState;
-  if (!state.langTutorMsgs || !Array.isArray(state.langTutorMsgs)) {
-    state.langTutorMsgs = [];
+  var chat  = getActiveChat(state);
+  if (!chat) chat = newLangChat(state.langTutorLang || 'en');
+  if (!Array.isArray(chat.messages)) chat.messages = [];
+
+  chat.messages.push({ role:'user', text:msg });
+  /* Auto-title chat from first message (like ChatGPT) */
+  if (chat.messages.length === 1 && (chat.title||'').indexOf('New ') === 0) {
+    chat.title = msg.substring(0, 42) + (msg.length > 42 ? '…' : '');
   }
-  state.langTutorMsgs.push({ role:'user', text:msg });
   saveData();
 
-  var langs = getAllLangs(state);
-  var l = langs.find(function(x){ return x.id === state.langActive; }) || langs[0];
+  var langName = (getLangs(state)[chat.lang]||{name:'English'}).name;
 
   var ld = document.getElementById('tutor-loading');
   if (ld) ld.style.display = 'block';
 
+  var finish = function(reply) {
+    var ld2 = document.getElementById('tutor-loading');
+    if (ld2) ld2.style.display = 'none';
+    chat.messages.push({ role:'ai', text:reply });
+    speakTutorResponse(reply);
+    saveData(); renderPage();
+    setTimeout(function(){ var el=document.getElementById('tutor-msgs'); if(el) el.scrollTop=el.scrollHeight; },100);
+  };
+
   if (typeof askLanguageTutor === 'function' && typeof getApiKey === 'function' && getApiKey()) {
-    askLanguageTutor(l ? l.name : 'Korean', msg, state.langTutorMsgs, function(reply) {
-      var ld2 = document.getElementById('tutor-loading');
-      if (ld2) ld2.style.display = 'none';
-      state.langTutorMsgs.push({ role:'ai', text:reply });
-      speakTutorResponse(reply);
-      saveData(); renderPage();
-      setTimeout(function(){ var el=document.getElementById('tutor-msgs'); if(el) el.scrollTop=el.scrollHeight; },100);
-    });
+    askLanguageTutor(langName, msg, chat.messages, finish);
   } else {
-    var reply = buildTutorReply(msg, l ? l.name : 'Korean');
-    setTimeout(function() {
-      var ld2 = document.getElementById('tutor-loading');
-      if (ld2) ld2.style.display = 'none';
-      state.langTutorMsgs.push({ role:'ai', text:reply });
-      speakTutorResponse(reply);
-      saveData(); renderPage();
-      setTimeout(function(){ var el=document.getElementById('tutor-msgs'); if(el) el.scrollTop=el.scrollHeight; },100);
-    }, 600);
+    setTimeout(function() { finish(buildTutorReply(msg, langName)); }, 600);
   }
 }
 
@@ -641,9 +795,10 @@ function getTutorReply(msg, langName, state) {
 }
 
 function saveTutorToNotebook(lang) {
-  var msgs = window.AppState.langTutorMsgs || [];
+  var chat = getActiveChat(window.AppState);
+  var msgs = chat ? (chat.messages||[]) : [];
   if (msgs.length === 0) return;
-  var entry = msgs.map(function(m){ return (m.role==='user'?'Me: ':'Tutor: ') + m.content; }).join('\n\n');
+  var entry = msgs.map(function(m){ return (m.role==='user'?'Me: ':'Tutor: ') + (m.text||m.content||''); }).join('\n\n');
   if (!window.AppState.langNotebook) window.AppState.langNotebook = {};
   if (!window.AppState.langNotebook[lang]) window.AppState.langNotebook[lang] = [];
   window.AppState.langNotebook[lang].push({
@@ -692,30 +847,28 @@ function toggleLangConversation(langId) {
   var l = langs.find(function(x){ return x.id === (langId || state.langActive); }) || langs[0];
   if (!l) return;
 
+  /* Voice always talks inside the active chat */
+  var chat = getActiveChat(state);
+  if (!chat) chat = newLangChat(l.id, 'Voice chat — ' + new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'}));
+  if (!Array.isArray(chat.messages)) chat.messages = [];
+
   /* Start voice conversation */
   if (typeof startVoiceConversation === 'function') {
     startVoiceConversation(l.name, function(userText) {
-      /* User spoke — save and show — ensure always array */
-      if (!window.AppState.langTutorMsgs || !Array.isArray(window.AppState.langTutorMsgs)) {
-        window.AppState.langTutorMsgs = [];
-      }
-      window.AppState.langTutorMsgs.push({ role:'user', text: userText });
+      chat.messages.push({ role:'user', text: userText });
       saveData(); renderPage();
 
-      /* Get AI response */
-      if (typeof askLanguageTutor === 'function' && typeof getApiKey === 'function' && getApiKey()) {
-        askLanguageTutor(l.name, userText, window.AppState.langTutorMsgs, function(reply) {
-          window.AppState.langTutorMsgs.push({ role:'ai', text: reply });
-          saveData(); renderPage();
-          /* AI speaks back */
-          if (typeof aiSpeak === 'function') aiSpeak(reply, l.name, null);
-          else if (typeof speakResponse === 'function') speakResponse(reply, 'en-US', null);
-        });
-      } else {
-        var reply = buildTutorReply(userText, l.name);
-        window.AppState.langTutorMsgs.push({ role:'ai', text: reply });
+      var speakBack = function(reply) {
+        chat.messages.push({ role:'ai', text: reply });
         saveData(); renderPage();
         if (typeof aiSpeak === 'function') aiSpeak(reply, l.name, null);
+        else if (typeof speakResponse === 'function') speakResponse(reply, 'en-US', null);
+      };
+
+      if (typeof askLanguageTutor === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+        askLanguageTutor(l.name, userText, chat.messages, speakBack);
+      } else {
+        speakBack(buildTutorReply(userText, l.name));
       }
     });
     renderPage();
@@ -756,7 +909,8 @@ function speakTutorResponse(text) {
   if (!autoSpeak) return;
   var state = window.AppState;
   var langs = getAllLangs(state);
-  var l = langs.find(function(x){ return x.id === state.langActive; }) || langs[0];
+  var chat  = getActiveChat(state);
+  var l = langs.find(function(x){ return x.id === (chat ? chat.lang : state.langActive); }) || langs[0];
   var speechLang = (typeof SPEECH_LANGS !== 'undefined' && SPEECH_LANGS[l.name]) || 'en-US';
   if (typeof speakText === 'function') speakText(text, speechLang);
 }

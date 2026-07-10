@@ -335,25 +335,128 @@ function renderAnalyticsMonthly(state) {
   }
 
   var habits     = state.habits || [];
-  var habitsAvg  = habits.length > 0 ? Math.round(habits.reduce(function(a,h){ return a+(h.week||[]).filter(Boolean).length; },0)/habits.length*100/7) : 0;
+  /* Use dated habit history for a true monthly rate */
+  var habitsAvg = 0;
+  if (habits.length > 0) {
+    var elapsed = now.getDate();
+    var totalRate = 0;
+    habits.forEach(function(hb) {
+      var done = hb.history ? aeActiveDaysInMonth(hb.history, year, month) : (hb.week||[]).filter(Boolean).length;
+      totalRate += pct(done, elapsed);
+    });
+    habitsAvg = Math.round(totalRate / habits.length);
+  }
+
+  /* Gym + money this month */
+  var gymMonth   = aeActiveDaysInMonth(aeGymByDate(state), year, month);
+  var monthSpend = 0;
+  (state.expenses||[]).forEach(function(e) {
+    var d = new Date(e.date||Date.now());
+    if (!isNaN(d) && d.getFullYear()===year && d.getMonth()===month) monthSpend += (e.amount||0);
+  });
 
   var h = '';
   h += '<div class="grid-2" style="margin-bottom:14px;">';
   h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + Math.round(totalFocus/60) + 'h</div><div class="stat-label">Month Focus</div></div>';
   h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + activeDays + '</div><div class="stat-label">Active Days</div></div>';
   h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + habitsAvg + '%</div><div class="stat-label">Habit Rate</div></div>';
-  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + daysInMonth + '</div><div class="stat-label">Days in Month</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#f97316"><div class="stat-value">' + gymMonth + '</div><div class="stat-label">Gym Days</div></div>';
   h += '</div>';
 
-  h += '<div class="card">';
+  h += '<div class="card" style="margin-bottom:14px;">';
   h += '<div class="card-header">Keep going Vasavi! Every day counts. 💜</div>';
   h += '<div style="font-size:12px;line-height:2;color:#a0aec0;">';
   h += '• ' + activeDays + ' out of ' + daysInMonth + ' days with focus sessions<br>';
   h += '• Average: ' + (activeDays > 0 ? Math.round(totalFocus/activeDays) : 0) + ' mins per active day<br>';
-  h += '• Habit consistency: ' + habitsAvg + '%';
+  h += '• Habit consistency: ' + habitsAvg + '%<br>';
+  h += '• Gym: ' + gymMonth + ' days · Spend: ₹' + formatRupees(monthSpend);
   h += '</div></div>';
 
+  h += '<button class="btn-primary" style="width:100%;" onclick="lifeMonthAISummary(this)">🤖 AI Summary — How To Improve Next Month?</button>';
+  h += '<div id="life-month-ai" style="display:none;"></div>';
+
   return h;
+}
+
+/* ============================================
+   WHOLE-LIFE AI SUMMARIES (month + year)
+   Pulls every module together and asks for
+   improvement points.
+   ============================================ */
+function buildLifeMonthContext() {
+  var state = window.AppState;
+  var now = new Date(), year = now.getFullYear(), month = now.getMonth();
+  var focusMap = aeFocusByDate(state);
+  var focusTotal = aeMonthTotals(focusMap, year)[month];
+  var focusDays  = aeActiveDaysInMonth(focusMap, year, month);
+  var gymDays    = aeActiveDaysInMonth(aeGymByDate(state), year, month);
+  var spendMap   = aeSpendByDate(state);
+  var spendTotal = aeMonthTotals(spendMap, year)[month];
+  var byCat = {};
+  (state.expenses||[]).forEach(function(e) {
+    var d = new Date(e.date||Date.now());
+    if (!isNaN(d) && d.getFullYear()===year && d.getMonth()===month) byCat[e.cat||'Other'] = (byCat[e.cat||'Other']||0)+(e.amount||0);
+  });
+  var habitLines = (state.habits||[]).map(function(hb) {
+    var done = hb.history ? aeActiveDaysInMonth(hb.history, year, month) : 0;
+    return hb.name + ': ' + done + '/' + now.getDate() + ' days';
+  });
+  var langDays = aeActiveDaysInMonth(aeLangByDate(state), year, month);
+  var jobsMonth = (state.jobs||[]).filter(function(j){ var d=new Date(j.date||j.appliedTs||0); return !isNaN(d)&&d.getFullYear()===year&&d.getMonth()===month; }).length;
+
+  return {
+    text: 'Life data for ' + AE_MONTHS[month] + ' ' + year + ' (day ' + now.getDate() + ' of month):\n' +
+      '• Focus: ' + focusTotal + ' mins across ' + focusDays + ' days (target 120/day)\n' +
+      '• Gym: ' + gymDays + ' days\n' +
+      '• Habits: ' + (habitLines.join('; ')||'none tracked') + '\n' +
+      '• Language practice: ' + langDays + ' days\n' +
+      '• Spend: ₹' + spendTotal + ' — by category: ' + (Object.keys(byCat).map(function(c){ return c+' ₹'+byCat[c]; }).join(', ')||'none') + '\n' +
+      '• Job applications this month: ' + jobsMonth,
+    focusTotal: focusTotal, focusDays: focusDays, gymDays: gymDays,
+    spendTotal: spendTotal, byCat: byCat, month: month, year: year
+  };
+}
+
+function lifeMonthAISummary(btn) {
+  var c = buildLifeMonthContext();
+  var topCat = Object.keys(c.byCat).sort(function(a,b){ return c.byCat[b]-c.byCat[a]; })[0];
+  var fallback = '📊 ' + AE_MONTHS[c.month] + ' ' + c.year + ' — whole life summary:\n' +
+    '• Focus: ' + Math.round(c.focusTotal/60) + 'h on ' + c.focusDays + ' days\n' +
+    '• Gym: ' + c.gymDays + ' days\n' +
+    '• Spend: ₹' + formatRupees(c.spendTotal) + (topCat ? ' (most on ' + topCat + ')' : '') + '\n\n' +
+    'Improve next month:\n' +
+    '1. ' + (c.focusDays < 20 ? 'Focus consistency first — never miss 2 days in a row.' : 'Keep focus rhythm; raise quality with harder DS topics.') + '\n' +
+    '2. ' + (c.gymDays < 12 ? 'Gym slipped — book it like an appointment, 6 AM alarm.' : 'Gym is solid — maintain.') + '\n' +
+    '3. ' + (topCat ? 'Cut ' + topCat + ' spending by 20% (₹' + formatRupees(Math.round((c.byCat[topCat]||0)*0.8)) + ' cap).' : 'Log expenses daily so money analytics work.');
+  aeAISummary('Life Month Summary', c.text, fallback, btn, 'life-month-ai');
+}
+
+function lifeYearAISummary(btn) {
+  var state = window.AppState;
+  var year  = new Date().getFullYear();
+  var focusMap = aeFocusByDate(state);
+  var focusMonths = aeMonthTotals(focusMap, year);
+  var gymMap = aeGymByDate(state);
+  var gymMonths = aeMonthTotals(gymMap, year);
+  var spendMonths = aeMonthTotals(aeSpendByDate(state), year);
+  var jobs = (state.jobs||[]).length;
+
+  var ctx = 'Year ' + year + ' life data by month:\n' +
+    'Focus mins: '  + focusMonths.map(function(v,i){ return AE_MONTHS_SHORT[i]+' '+v; }).join(', ') + '\n' +
+    'Gym days: '    + gymMonths.map(function(v,i){ return AE_MONTHS_SHORT[i]+' '+v; }).join(', ') + '\n' +
+    'Spend ₹: '     + spendMonths.map(function(v,i){ return AE_MONTHS_SHORT[i]+' '+v; }).join(', ') + '\n' +
+    'Total job applications: ' + jobs;
+  var bestM = focusMonths.indexOf(Math.max.apply(null, focusMonths));
+  var fallback = '🏆 ' + year + ' — whole year summary:\n' +
+    '• Total focus: ' + Math.round(focusMonths.reduce(function(a,b){return a+b;},0)/60) + 'h (best month: ' + AE_MONTHS[bestM] + ')\n' +
+    '• Gym: ' + gymMonths.reduce(function(a,b){return a+b;},0) + ' days\n' +
+    '• Spend: ₹' + formatRupees(spendMonths.reduce(function(a,b){return a+b;},0)) + '\n' +
+    '• Jobs applied: ' + jobs + '\n\n' +
+    'Improve next year:\n' +
+    '1. Repeat whatever you did in ' + AE_MONTHS[bestM] + ' — that was your best focus month.\n' +
+    '2. Set a fixed monthly budget and review this page on the 1st of every month.\n' +
+    '3. Keep applying consistently — interviews come from volume + the portfolio project.';
+  aeAISummary('Life Year Summary — ' + year, ctx, fallback, btn, 'life-year-ai');
 }
 
 /* ============================================
@@ -415,6 +518,9 @@ function renderAnalyticsYearly(state) {
   });
   h += '</div>';
   h += '</div>';
+
+  h += '<button class="btn-primary" style="width:100%;margin-bottom:14px;" onclick="lifeYearAISummary(this)">🤖 AI Summary — How To Improve Next Year?</button>';
+  h += '<div id="life-year-ai" style="display:none;"></div>';
 
   h += '<div class="card">';
   h += '<div style="font-size:12px;color:#a855f7;font-weight:700;text-align:center;padding:10px;">';
