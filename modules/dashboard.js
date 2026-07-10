@@ -213,7 +213,7 @@ function renderDashboard() {
 
   if ((state.habits || []).length > 0) {
     state.habits.slice(0, 6).forEach(function(habit) {
-      var streak = (habit.week || []).filter(Boolean).length;
+      var streak = aeStreakFlexible(habit.history || {}, 1);
       h += '<div style="display:flex;justify-content:space-between;' +
                'align-items:center;padding:6px 0;' +
                'border-bottom:1px solid #1a1a35;">' +
@@ -277,7 +277,7 @@ function goalStreak(state) {
   daily.forEach(function(g) {
     if (g.done && g.deadline) doneByDay[g.deadline] = 1;
   });
-  return aeStreak(doneByDay);
+  return aeStreakFlexible(doneByDay, 1); /* 1 off-day never breaks it */
 }
 
 function addDashQuickGoal() {

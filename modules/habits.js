@@ -104,7 +104,7 @@ function renderHabits() {
 
   if (habits.length > 0) {
     habits.forEach(function(habit, hi) {
-      var streak = (habit.week || []).filter(Boolean).length;
+      var streak = aeStreakFlexible(habit.history || {}, 1);
       h += '<div class="habit-row">';
 
       /* Habit info */
@@ -295,7 +295,7 @@ function renderHabitsAnalytics(state) {
   var habit  = habits[sel];
   var hist   = habit.history || {};
   var v      = aeGetView('habits');
-  var streak = aeStreak(hist);
+  var streak = aeStreakFlexible(hist, 1); /* 1 missed day doesn't break it */
   var totalDone = Object.keys(hist).filter(function(k){ return hist[k]; }).length;
 
   /* First tracked date → tracked-days denominator */
@@ -304,7 +304,7 @@ function renderHabitsAnalytics(state) {
   var trackedDays = Math.max(1, Math.round((new Date(aeTodayIso()) - new Date(firstIso)) / 86400000) + 1);
 
   h += '<div class="grid-4" style="margin-bottom:14px;">';
-  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Current Streak</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Current Streak</div><div class="stat-sub">1 off-day allowed</div></div>';
   h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + totalDone + '</div><div class="stat-label">Total Days Done</div></div>';
   h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + (trackedDays - totalDone) + '</div><div class="stat-label">Days Missed</div><div class="stat-sub">since ' + firstIso + '</div></div>';
   h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + pct(totalDone, trackedDays) + '%</div><div class="stat-label">All-Time Rate</div></div>';
@@ -374,11 +374,11 @@ function habitAISummary(btn, sel) {
 
   var ctx = 'Habit: ' + habit.name + ' (' + (habit.cat||'General') + ') — ' + AE_MONTHS[v.m] + ' ' + v.y + '\n' +
     'Done ' + doneDates.length + '/' + elapsed + ' days. Missed dates: ' + (missDates.join(', ')||'none') + '\n' +
-    'Current streak: ' + aeStreak(hist) + ' days.';
+    'Current streak: ' + aeStreakFlexible(hist, 1) + ' days.';
   var fallback = '📊 ' + habit.name + ' — ' + AE_MONTHS[v.m] + ' ' + v.y + ':\n' +
     '• Done ' + doneDates.length + ' of ' + elapsed + ' days (' + pct(doneDates.length, elapsed) + '%)\n' +
     '• Missed ' + missDates.length + ' days' + (missDates.length ? ' — you skip most on ' + worstDay + 's' : '') + '\n' +
-    '• Current streak: ' + aeStreak(hist) + ' days\n\n' +
+    '• Current streak: ' + aeStreakFlexible(hist, 1) + ' days\n\n' +
     (pct(doneDates.length, elapsed) >= 80 ? '🔥 Strong! This habit is nearly automatic now.' :
      pct(doneDates.length, elapsed) >= 50 ? '💪 Building. Plan ' + habit.name + ' at a fixed time on ' + worstDay + 's — that\'s your weak day.' :
      '⚠️ This habit is slipping. Shrink it: do a 2-minute version daily rather than skipping.');

@@ -224,14 +224,14 @@ function renderTimerAnalytics(state) {
   });
   h += '</div>';
 
-  /* Always-on top stats */
-  var streak = aeStreak(byDate);
+  /* Always-on top stats — 1 missed day never breaks your streak */
+  var streak = aeStreakFlexible(byDate, 1);
   var totalDays = Object.keys(byDate).filter(function(k){ return byDate[k]>0; }).length;
   var targetDays = Object.keys(byDate).filter(function(k){ return byDate[k]>=target; }).length;
   var totalMins = 0; Object.keys(byDate).forEach(function(k){ totalMins += byDate[k]; });
 
   h += '<div class="grid-4" style="margin-bottom:14px;">';
-  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Day Streak</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Day Streak</div><div class="stat-sub">1 off-day allowed</div></div>';
   h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + targetDays + '</div><div class="stat-label">Days Hit ' + target + 'm</div></div>';
   h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + totalDays + '</div><div class="stat-label">Total Active Days</div></div>';
   h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + Math.round(totalMins/60) + 'h</div><div class="stat-label">All-Time Focus</div></div>';

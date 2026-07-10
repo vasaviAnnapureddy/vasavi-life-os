@@ -370,7 +370,7 @@ function englishPracticeStreak(state) {
   ensureLangChats(state).forEach(function(c) {
     if (c.lang === 'en' && (c.messages||[]).length >= 2) days[c.created] = 1;
   });
-  return aeStreak(days);
+  return aeStreakFlexible(days, 1); /* miss one day, streak survives */
 }
 
 function renderLangTutor(state, langs) {
