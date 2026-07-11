@@ -75,6 +75,66 @@ function groqChat(systemPrompt, messages, onDone) {
   .catch(function(e) { onDone('Connection error: '+e.message); });
 }
 
+/* ============================================
+   VISION — send a photo + question to the AI.
+   Groq → Llama 4 Scout (free). Claude key → Claude.
+   Used by the AI Dietician to read plate photos.
+   ============================================ */
+function aiVision(prompt, dataUrl, onDone) {
+  var key = getApiKey();
+  if (!key) { onDone('Add your API key in AI Assistant first (Groq free key works for photos too).'); return; }
+
+  if (isClaudeKey()) {
+    var parts = dataUrl.split(',');
+    var mediaType = (parts[0].match(/data:(.*?);/)||[])[1] || 'image/jpeg';
+    fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 700,
+        messages: [{ role:'user', content: [
+          { type:'image', source:{ type:'base64', media_type:mediaType, data:parts[1] } },
+          { type:'text', text: prompt }
+        ]}]
+      })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.content && data.content[0]) onDone(data.content[0].text||'');
+      else onDone('Claude error: '+(data.error&&data.error.message||'unknown'));
+    })
+    .catch(function(e){ onDone('Connection error: '+e.message); });
+    return;
+  }
+
+  /* Groq vision — Llama 4 Scout supports images, free */
+  fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
+    body: JSON.stringify({
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      max_tokens: 700,
+      temperature: 0.3,
+      messages: [{ role:'user', content: [
+        { type:'text', text: prompt },
+        { type:'image_url', image_url:{ url: dataUrl } }
+      ]}]
+    })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (data.choices && data.choices[0]) onDone(data.choices[0].message.content||'');
+    else onDone('Error: '+(data.error&&data.error.message||'unknown'));
+  })
+  .catch(function(e){ onDone('Connection error: '+e.message); });
+}
+
 /* Real Claude — used automatically when key starts with sk-ant- */
 function claudeChat(systemPrompt, messages, onDone) {
   var msgs = [];
