@@ -19,12 +19,13 @@ function renderBrain() {
   var h = '';
 
   h += '<div class="subtab-bar">';
-  [['byte','⚡ AI Daily Byte'],['rescue','🔤 Word Rescue'],['sprint','🧠 Fluency Sprint']].forEach(function(t) {
+  [['byte','⚡ AI Daily Byte'],['teach','🎤 60-Sec Teacher'],['rescue','🔤 Word Rescue'],['sprint','🧠 Fluency Sprint']].forEach(function(t) {
     h += '<div class="subtab ' + (tab===t[0]?'active':'') + '" onclick="switchBrainTab(\'' + t[0] + '\')">' + t[1] + '</div>';
   });
   h += '</div>';
 
   if (tab === 'byte')   h += renderAIByte(state);
+  if (tab === 'teach')  h += renderTeacher(state);
   if (tab === 'rescue') h += renderWordRescue(state);
   if (tab === 'sprint') h += renderFluencySprint(state);
 
@@ -301,6 +302,171 @@ function endSprint() {
   saveData(); renderPage();
   if (typeof playAlarm === 'function') playAlarm();
   showToast('🧠 ' + count + ' words! ' + (count>=15?'Excellent retrieval!':'Keep training — it climbs fast.'));
+}
+
+/* ============================================
+   🎤 60-SECOND TEACHER — the Feynman machine
+   Explain what you studied OUT LOUD in 60s.
+   AI grades: clarity, fumbles, missing words.
+   This is word-retrieval training in REAL
+   sentences + literal interview practice.
+   ============================================ */
+var _teachRecorder = null;
+var _teachTimer    = null;
+var _teachSecs     = 0;
+
+function renderTeacher(state) {
+  var h = '';
+  var log = state.teachLog || [];
+  var todayCount = log.filter(function(e){ return e.iso === aeTodayIso(); }).length;
+  var streakMap = {};
+  log.forEach(function(e){ streakMap[e.iso] = 1; });
+  var streak = aeStreakFlexible(streakMap, 1);
+  var recording = !!state.teachRecording;
+
+  h += '<div class="grid-3" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Teaching Streak</div><div class="stat-sub">1 off-day allowed</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + todayCount + '</div><div class="stat-label">Today</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + log.length + '</div><div class="stat-label">Total Lessons Taught</div></div>';
+  h += '</div>';
+
+  /* Topic pick — suggested from today's focus sessions */
+  var todayStr = new Date().toDateString();
+  var topics = [];
+  (state.sessions||[]).filter(function(s){ return s.start && new Date(s.start).toDateString()===todayStr; })
+    .forEach(function(s){ if (s.what && topics.indexOf(s.what)===-1) topics.push(s.what); });
+  var byte = AI_BYTES[brainDayNumber() % AI_BYTES.length];
+  topics.push(byte.t);
+
+  h += '<div class="card" style="margin-bottom:14px;border:1px solid #f59e0b;">';
+  h += '<div class="card-header">🎤 Teach it — like explaining to a friend</div>';
+  h += '<div style="font-size:11px;color:#8899bb;margin-bottom:10px;">Pick what you studied today (or type anything). Then explain it OUT LOUD for 60 seconds. Speaking under gentle time pressure is exactly the muscle that fails you mid-conversation — this trains it in real sentences.</div>';
+
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
+  topics.slice(0,4).forEach(function(t) {
+    h += '<div onclick="document.getElementById(\'teach-topic\').value=\'' + escHtml(t).replace(/'/g,'') + '\'" style="padding:5px 10px;border-radius:99px;background:#1a1a35;border:1px solid var(--border);font-size:10px;cursor:pointer;color:#a0aec0;">' + escHtml(t) + '</div>';
+  });
+  h += '</div>';
+  h += '<input id="teach-topic" placeholder="Topic to teach (e.g. What is overfitting?)" value="' + escHtml(state.teachTopic||'') + '" style="margin-bottom:10px;" />';
+
+  if (!recording) {
+    h += '<button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="teachStart()">🎙️ Record 60 Seconds (speak!)</button>';
+  } else {
+    h += '<div style="text-align:center;margin-bottom:8px;">';
+    h += '<div id="teach-countdown" style="font-size:30px;font-weight:900;color:#ef4444;">60s</div>';
+    h += '<div style="font-size:11px;color:#8899bb;margin-bottom:8px;">🔴 Recording... teach it like your friend is sitting opposite you!</div>';
+    h += '<button class="btn-red" onclick="teachStop()">⏹ Done Explaining</button>';
+    h += '</div>';
+  }
+
+  h += '<div style="font-size:10px;color:#556080;margin-bottom:8px;text-align:center;">— or type your explanation below if you can\'t speak right now —</div>';
+  h += '<textarea id="teach-transcript" rows="4" placeholder="Your explanation appears here after recording (or type it)...">' + escHtml(state.teachTranscript||'') + '</textarea>';
+  h += '<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="teachGrade(this)">🤖 Grade My Explanation</button>';
+  h += '<div id="teach-result" style="display:none;"></div>';
+  h += '</div>';
+
+  /* History */
+  if (log.length) {
+    h += '<div class="card"><div class="card-header">Past Lessons You Taught</div>';
+    log.slice(-7).reverse().forEach(function(e) {
+      h += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1a1a35;font-size:11px;">';
+      h += '<span>' + escHtml(e.topic) + '</span>';
+      h += '<span style="color:' + (e.score>=7?'#10b981':e.score>=5?'#f59e0b':'#ef4444') + ';font-weight:800;">' + (e.score!=null? e.score+'/10' : '—') + ' · ' + e.iso + '</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  return h;
+}
+
+function teachStart() {
+  var topicEl = document.getElementById('teach-topic');
+  if (!topicEl || !topicEl.value.trim()) { alert('First pick or type a topic to teach!'); return; }
+  window.AppState.teachTopic = topicEl.value.trim();
+
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    alert('Mic not available here — type your explanation in the box instead.');
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio:true }).then(function(stream) {
+    var chunks = [];
+    _teachRecorder = new MediaRecorder(stream, MediaRecorder.isTypeSupported('audio/webm') ? { mimeType:'audio/webm' } : {});
+    _teachRecorder.ondataavailable = function(e){ if (e.data.size>0) chunks.push(e.data); };
+    _teachRecorder.onstop = function() {
+      stream.getTracks().forEach(function(t){ t.stop(); });
+      var blob = new Blob(chunks, { type:'audio/webm' });
+      window.AppState.teachRecording = false;
+      saveData(); renderPage();
+      showToast('🎧 Converting your speech to text...');
+      if (typeof groqSpeechToText === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+        groqSpeechToText(blob, function(text, err) {
+          window.AppState.teachTranscript = err ? '' : text;
+          saveData(); renderPage();
+          if (err) showToast('Transcription failed: ' + err, 'error');
+          else showToast('✍️ Transcribed! Now hit "Grade My Explanation".');
+        });
+      } else {
+        showToast('Add your Groq key for speech-to-text — or type your explanation.', 'error');
+      }
+    };
+    _teachRecorder.start();
+    window.AppState.teachRecording = true;
+    window.AppState.teachTranscript = '';
+    _teachSecs = 60;
+    saveData(); renderPage();
+
+    clearInterval(_teachTimer);
+    _teachTimer = setInterval(function() {
+      _teachSecs--;
+      var el = document.getElementById('teach-countdown');
+      if (el) el.textContent = _teachSecs + 's';
+      if (_teachSecs <= 0) teachStop();
+    }, 1000);
+  }).catch(function(err) {
+    alert('Mic permission needed: ' + err.message + '\nOr just type your explanation below.');
+  });
+}
+
+function teachStop() {
+  clearInterval(_teachTimer); _teachTimer = null;
+  if (_teachRecorder && _teachRecorder.state === 'recording') _teachRecorder.stop();
+  else { window.AppState.teachRecording = false; saveData(); renderPage(); }
+}
+
+function teachGrade(btn) {
+  var transcript = (document.getElementById('teach-transcript')||{}).value || '';
+  var topic = (document.getElementById('teach-topic')||{}).value || window.AppState.teachTopic || '';
+  if (!transcript.trim()) { alert('Record or type your explanation first!'); return; }
+  window.AppState.teachTranscript = transcript;
+
+  var target = document.getElementById('teach-result');
+  target.style.display = 'block';
+  target.innerHTML = '<div style="padding:10px;font-size:11px;color:#f59e0b;">🤖 Grading like a kind interviewer...</div>';
+
+  var sys = 'You are a warm but honest communication coach for Vasavi (23, DS student, Bengaluru, preparing for interviews; ' +
+    'she struggles with word-finding while speaking). She explained a topic in ~60 seconds. Grade her explanation:\n' +
+    '1) What was CLEAR and good (be specific)\n2) Where it got confusing or she circled around a missing word\n' +
+    '3) THREE precise words/phrases that would have made it sharper (with how to use each)\n' +
+    '4) One-line improved version of her weakest sentence\n' +
+    'End with exactly: SCORE: <number>/10. Under 200 words. Encourage — she is training a muscle.';
+
+  var finish = function(reply) {
+    var m = reply.match(/SCORE:\s*(\d+)/i);
+    var score = m ? parseInt(m[1]) : null;
+    target.innerHTML = '<div style="margin-top:10px;background:#0d0d1a;border-left:3px solid #f59e0b;padding:12px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + escHtml(reply) + '</div>';
+    if (!window.AppState.teachLog) window.AppState.teachLog = [];
+    window.AppState.teachLog.push({ iso: aeTodayIso(), topic: topic, score: score });
+    window.AppState.teachTranscript = '';
+    saveData();
+    showToast(score != null ? '🎤 Scored ' + score + '/10 — logged!' : '🎤 Lesson logged!');
+  };
+
+  if (typeof groqChat === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+    groqChat(sys, [{ role:'user', text:'Topic: ' + topic + '\n\nMy 60-second explanation:\n' + transcript }], finish);
+  } else {
+    finish('No API key found — add your free Groq key in AI Assistant for real grading.\nStill, saying it out loud WAS the workout. SCORE: 5/10');
+  }
 }
 
 console.log('brain.js loaded OK');

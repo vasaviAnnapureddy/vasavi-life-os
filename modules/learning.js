@@ -44,11 +44,12 @@ function renderLearning() {
 
   /* Tabs */
   h += '<div class="subtab-bar">';
-  [['map','🗺️ Mind Map'],['notes','📓 My Notes'],['progress','📊 Progress'],['custom','➕ My Topics']].forEach(function(t){
+  [['discover','🎁 Discover'],['map','🗺️ Mind Map'],['notes','📓 My Notes'],['progress','📊 Progress'],['custom','➕ My Topics']].forEach(function(t){
     h += '<div class="subtab ' + (tab===t[0]?'active':'') + '" onclick="switchLearnTab(\'' + t[0] + '\')">' + t[1] + '</div>';
   });
   h += '</div>';
 
+  if (tab === 'discover') h += renderDiscover(state);
   if (tab === 'map')      h += renderMindMap(state, allRoots);
   if (tab === 'notes')    h += renderMyNotes(state);
   if (tab === 'progress') h += renderProgress(state, allRoots);
@@ -636,6 +637,171 @@ function getLoadedRoots() {
    ACTIONS
    ============================================ */
 function switchLearnTab(tab)  { window.AppState.learnTab=tab; saveData(); renderPage(); }
+
+/* ============================================
+   🎁 DISCOVER — for the days you don't know
+   WHAT you want to learn.
+   - Surprise lesson: the OS picks a domain,
+     AI writes today's lesson. You rate 👍/👎
+     and it learns YOUR taste.
+   - Curiosity Inbox: drop anything that made
+     you curious → it becomes a lesson.
+   ============================================ */
+var DISCOVER_DOMAINS = [
+  'Psychology of everyday life', 'How money and banks really work', 'History\'s turning points',
+  'How the human body works', 'Communication and persuasion', 'Space and the universe',
+  'How everyday technology works', 'Indian history and culture', 'Philosophy for real life',
+  'Nature and animals', 'Food science', 'How great companies were built',
+  'The science of habits and the brain', 'World cultures and geography', 'Art, music and cinema',
+  'Physics of daily life'
+];
+
+function renderDiscover(state) {
+  var h = '';
+  if (!state.discover) state.discover = { lessons:{}, tastes:{} };
+  var iso = aeTodayIso();
+  var today = state.discover.lessons[iso];
+  var learnedCount = Object.keys(state.discover.lessons).length;
+  var streak = aeStreakFlexible(state.discover.lessons, 1);
+
+  h += '<div class="grid-3" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Discovery Streak</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + learnedCount + '</div><div class="stat-label">Surprises Learned</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + (state.curiosity||[]).length + '</div><div class="stat-label">In Curiosity Inbox</div></div>';
+  h += '</div>';
+
+  /* ---- TODAY'S SURPRISE ---- */
+  h += '<div class="card" style="margin-bottom:14px;border:1px solid #a855f7;">';
+  if (!today) {
+    h += '<div style="text-align:center;padding:18px 8px;">';
+    h += '<div style="font-size:40px;margin-bottom:8px;">🎁</div>';
+    h += '<div style="font-size:15px;font-weight:900;margin-bottom:6px;">Today\'s Surprise Lesson</div>';
+    h += '<div style="font-size:11px;color:#8899bb;margin-bottom:14px;">You don\'t choose. You just show up.<br>The OS picks — and it learns what you love from your 👍/👎.</div>';
+    h += '<button class="btn-primary" onclick="revealSurprise(this)">🎁 Reveal Today\'s Lesson</button>';
+    h += '</div>';
+  } else {
+    h += '<div style="font-size:10px;color:#a855f7;font-weight:800;margin-bottom:4px;">🎁 TODAY\'S SURPRISE · ' + escHtml(today.domain) + '</div>';
+    h += '<div style="font-size:16px;font-weight:900;margin-bottom:10px;">' + escHtml(today.title||'') + '</div>';
+    h += '<div style="font-size:13px;line-height:1.9;color:#c4c4d4;white-space:pre-wrap;margin-bottom:12px;">' + escHtml(today.text||'') + '</div>';
+    if (!today.rating) {
+      h += '<div style="display:flex;gap:8px;">';
+      h += '<button style="flex:1;padding:10px;border-radius:10px;border:2px solid #10b981;background:#001a0d;color:#10b981;cursor:pointer;font-weight:700;" onclick="rateSurprise(1)">👍 Loved it — more like this</button>';
+      h += '<button style="flex:1;padding:10px;border-radius:10px;border:2px solid #556080;background:var(--card2);color:#8899bb;cursor:pointer;font-weight:700;" onclick="rateSurprise(-1)">👎 Not my thing</button>';
+      h += '</div>';
+    } else {
+      h += '<div style="text-align:center;font-size:12px;color:#10b981;font-weight:700;">' + (today.rating>0?'👍 Noted — I\'ll bring more '+escHtml(today.domain)+'!':'👎 Noted — less of that domain.') + ' Come back tomorrow 🎁</div>';
+    }
+  }
+  h += '</div>';
+
+  /* ---- CURIOSITY INBOX ---- */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">🧲 Curiosity Inbox</div>';
+  h += '<div style="font-size:11px;color:#8899bb;margin-bottom:10px;">Saw a word in a reel? Someone said something interesting? Drop it here the moment curiosity strikes — each one becomes a lesson when you\'re ready.</div>';
+  h += '<div style="display:flex;gap:8px;margin-bottom:10px;">';
+  h += '<input id="curiosity-input" placeholder="e.g. why do cats purr? / what is blockchain? / GST" style="flex:1;" onkeydown="if(event.key===\'Enter\')addCuriosity()" />';
+  h += '<button class="btn-primary" onclick="addCuriosity()">+ Drop In</button>';
+  h += '</div>';
+
+  var inbox = state.curiosity || [];
+  if (inbox.length === 0) {
+    h += '<div style="font-size:11px;color:#556080;text-align:center;padding:10px;">Inbox empty. Next time something makes you go "hmm, what IS that?" — drop it here.</div>';
+  } else {
+    inbox.slice().reverse().forEach(function(c) {
+      var realIdx = inbox.indexOf(c);
+      h += '<div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">';
+      h += '<span style="font-size:12px;font-weight:700;flex:1;">' + escHtml(c.text) + '</span>';
+      h += '<span style="display:flex;gap:6px;">';
+      if (!c.lesson) h += '<button class="btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="teachCuriosity(' + realIdx + ', this)">🤖 Teach Me</button>';
+      h += '<button onclick="deleteCuriosity(' + realIdx + ')" style="background:none;border:none;color:#556080;cursor:pointer;">✕</button>';
+      h += '</span></div>';
+      if (c.lesson) {
+        h += '<div style="margin-top:8px;background:#0d0d1a;border-left:3px solid #10b981;padding:10px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + escHtml(c.lesson) + '</div>';
+      }
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+
+  return h;
+}
+
+function revealSurprise(btn) {
+  var state = window.AppState;
+  if (!state.discover) state.discover = { lessons:{}, tastes:{} };
+  var iso = aeTodayIso();
+
+  /* Pick domain: 60% chance from her 👍 favourites, else explore new */
+  var tastes = state.discover.tastes || {};
+  var loved = DISCOVER_DOMAINS.filter(function(d){ return (tastes[d]||0) > 0; });
+  var avoid = DISCOVER_DOMAINS.filter(function(d){ return (tastes[d]||0) < -1; });
+  var pool = DISCOVER_DOMAINS.filter(function(d){ return avoid.indexOf(d) === -1; });
+  var domain = (loved.length && Math.random() < 0.6)
+    ? loved[Math.floor(Math.random()*loved.length)]
+    : pool[Math.floor(Math.random()*pool.length)];
+
+  if (typeof groqChat === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+    btn.disabled = true; btn.textContent = '🎁 Preparing your surprise...';
+    var sys = 'You are the Discovery teacher in Vasavi\'s Life OS. She is 23, Bengaluru, curious about everything. ' +
+      'Write ONE fascinating mini-lesson from the given domain — something most people don\'t know, explained ' +
+      'like an amazing friend would, with an Indian example where natural. Structure: first line = a catchy title (no quotes), ' +
+      'then 130-170 words of lesson, then one line starting with "🤔 Think:" — a question to chew on. No headings, no markdown.';
+    groqChat(sys, [{ role:'user', text:'Domain: ' + domain + '. Surprise me with something I\'d never think to search for.' }], function(reply) {
+      var lines = reply.trim().split('\n');
+      var title = lines.shift() || domain;
+      state.discover.lessons[iso] = { domain: domain, title: title.trim(), text: lines.join('\n').trim(), rating: 0 };
+      saveData(); renderPage();
+    });
+  } else {
+    /* No key → reuse an AI byte as the surprise */
+    var byte = AI_BYTES[(brainDayNumber()+3) % AI_BYTES.length];
+    state.discover.lessons[iso] = { domain: 'AI & Technology', title: byte.t, text: byte.b + '\n\n🤔 Think: ' + byte.q, rating: 0 };
+    saveData(); renderPage();
+  }
+}
+
+function rateSurprise(r) {
+  var state = window.AppState;
+  var iso = aeTodayIso();
+  var lesson = state.discover.lessons[iso];
+  if (!lesson) return;
+  lesson.rating = r;
+  if (!state.discover.tastes) state.discover.tastes = {};
+  state.discover.tastes[lesson.domain] = (state.discover.tastes[lesson.domain]||0) + r;
+  saveData(); renderPage();
+}
+
+function addCuriosity() {
+  var el = document.getElementById('curiosity-input');
+  if (!el || !el.value.trim()) return;
+  if (!Array.isArray(window.AppState.curiosity)) window.AppState.curiosity = [];
+  window.AppState.curiosity.push({ text: el.value.trim(), date: aeTodayIso(), lesson: '' });
+  el.value = '';
+  saveData(); renderPage();
+  showToast('🧲 Caught! It\'s in your curiosity inbox.');
+}
+
+function teachCuriosity(idx, btn) {
+  var c = (window.AppState.curiosity||[])[idx];
+  if (!c) return;
+  if (!(typeof groqChat === 'function' && typeof getApiKey === 'function' && getApiKey())) {
+    showToast('Add your free Groq key in AI Assistant to turn curiosities into lessons.', 'error');
+    return;
+  }
+  btn.disabled = true; btn.textContent = '🤖 ...';
+  var sys = 'You are Vasavi\'s curiosity teacher. She is 23, Bengaluru. Answer her curiosity clearly and delightfully ' +
+    'in 120-160 words, like a brilliant friend. Indian example if natural. End with one line "🔗 Related: <2 things she could explore next>". No markdown headings.';
+  groqChat(sys, [{ role:'user', text: c.text }], function(reply) {
+    c.lesson = reply;
+    saveData(); renderPage();
+  });
+}
+
+function deleteCuriosity(idx) {
+  window.AppState.curiosity.splice(idx, 1);
+  saveData(); renderPage();
+}
 
 function toggleLearnRoot(id) {
   window.AppState.learnOpenRoot   = window.AppState.learnOpenRoot===id ? null : id;

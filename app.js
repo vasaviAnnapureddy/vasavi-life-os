@@ -29,6 +29,8 @@ var PAGE_TITLES = {
   travel:     'Travel OS',
   notes:      'Rich Notes',
   journal:    'Journal + Talk',
+  memories:   'Life Memories',
+  vault:      'The Vault',
   analytics:  'Analytics',
   ai:         'AI Assistant'
 };
@@ -55,6 +57,8 @@ var PAGE_SUBS = {
   travel:     'Plan trips. Save memories.',
   notes:      'Write, record, capture everything.',
   journal:    'Talk to your OS. It listens.',
+  memories:   'The book of your life, chapter by chapter.',
+  vault:      'For your eyes only. Encrypted.',
   analytics:  'See your life as data.',
   ai:         'Your personal AI mentor.'
 };
@@ -119,6 +123,8 @@ function renderPage() {
     travel:     typeof renderTravel     === 'function' ? renderTravel     : null,
     notes:      typeof renderNotes      === 'function' ? renderNotes      : null,
     journal:    typeof renderJournal    === 'function' ? renderJournal    : null,
+    memories:   typeof renderMemories   === 'function' ? renderMemories   : null,
+    vault:      typeof renderVault      === 'function' ? renderVault      : null,
     analytics:  typeof renderAnalytics  === 'function' ? renderAnalytics  : null,
     ai:         typeof renderAI         === 'function' ? renderAI         : null
   };
