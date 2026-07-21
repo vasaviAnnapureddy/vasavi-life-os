@@ -1,10 +1,11 @@
 # 🧠 Vasavi Life OS
 
+### ▶️ Live app: **https://vasaviannapureddy.github.io/vasavi-life-os/**
+
 **An offline-first, AI-native personal operating system** — a single progressive web app (PWA) that unifies focus, health, finance, learning, language, and reflection into one data model, with a context-aware AI layer that reads your real data before it answers.
 
 Built and shipped solo as a daily-driver on my own phone. Not a tutorial clone — every module solves a real problem I have, and the whole system runs offline-first with real-time cloud sync.
 
-> **Live app:** _add your Railway/hosting URL here_
 > **Stack in one line:** Vanilla JS PWA · Firebase Firestore (real-time sync) · Groq & Anthropic LLM APIs · Web Crypto · Web Speech · Service Worker
 
 ---
@@ -124,7 +125,7 @@ Analytics are computed on the fly by a shared engine (`utils/analytics_engine.js
 - **On-device:** Web Crypto (AES-256-GCM), Web Speech API + MediaRecorder, Canvas image preprocessing
 - **PWA:** Web App Manifest + Service Worker (installable, offline)
 - **Automation:** CallMeBot (WhatsApp), EmailJS (email), Google Calendar
-- **Deploy:** Railway (nixpacks + Procfile)
+- **Hosting:** static deploy (GitHub Pages) — Firebase handles all persistence and sync directly from the client
 
 ---
 
