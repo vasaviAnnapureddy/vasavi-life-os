@@ -1,6 +1,6 @@
 # 🧠 Vasavi Life OS
 
-### ▶️ Live app: **https://vasaviannapureddy.github.io/vasavi-life-os/**
+### ▶️ Live app: **https://vasaviannapureddy.github.io/vasavi-life-os/index.html**
 
 **An offline-first, AI-native personal operating system** — a single progressive web app (PWA) that unifies focus, health, finance, learning, language, and reflection into one data model, with a context-aware AI layer that reads your real data before it answers.
 
