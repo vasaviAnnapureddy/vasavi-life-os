@@ -63,9 +63,25 @@ function renderSettingsData(state) {
   h += '<div style="font-size:11px;color:#8899bb;margin-bottom:10px;line-height:1.7;">' +
     'Your whole life in one small file (currently about <b style="color:#a855f7;">' + health.kb + ' KB</b> — smaller than one photo). ' +
     'Google storage full? No problem — send it to yourself on <b>WhatsApp</b> or <b>Telegram</b> instead. Those keep it free, forever.</div>';
-  h += '<button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="shareBackupFile()">📤 Backup &amp; Send to WhatsApp / Telegram</button>';
-  h += '<button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="backupData()">⬇️ Download to This Device</button>';
-  h += '<div style="font-size:10px;color:#556080;line-height:1.7;">💡 <b>Best free trick:</b> in WhatsApp, message <i>yourself</i> (your own number) or use Telegram\'s "Saved Messages" — unlimited free file storage that never touches Google Drive.</div>';
+  var canPick = !!window.showSaveFilePicker;
+
+  /* 1 — Save straight into a folder you choose (e.g. the project's backups/) */
+  h += '<div style="border:1px solid #10b981;border-radius:10px;padding:10px;margin-bottom:10px;">';
+  h += '<div style="font-size:12px;font-weight:800;color:#10b981;margin-bottom:4px;">💻 Save into a folder on this laptop</div>';
+  h += '<div style="font-size:11px;color:#8899bb;margin-bottom:8px;line-height:1.7;">' +
+    (canPick
+      ? 'Choose where to save — pick <b>E:\\vasavi-life-os\\backups\\</b> to keep it inside your project.'
+      : 'Your browser will download it to your Downloads folder — then move it into <b>vasavi-life-os\\backups\\</b>.') + '</div>';
+  h += '<button class="btn-primary" style="width:100%;margin-bottom:6px;" onclick="saveBackupToFolder(false)">💾 Save Backup to Folder</button>';
+  h += '<button class="btn-ghost" style="width:100%;" onclick="saveBackupToFolder(true)">🔐 Save ENCRYPTED Backup (recommended)</button>';
+  h += '<div style="font-size:10px;color:#f59e0b;margin-top:6px;line-height:1.6;">🔐 Encrypted files are safe to store anywhere — USB, Telegram, another laptop. Unreadable without your passphrase.</div>';
+  h += '</div>';
+
+  /* 2 — Share to phone apps */
+  h += '<button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="shareBackupFile()">📤 Send to WhatsApp / Telegram (phone)</button>';
+  h += '<button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="backupData()">⬇️ Download to Downloads Folder</button>';
+  h += '<div style="font-size:10px;color:#556080;line-height:1.7;">💡 <b>On your phone:</b> "Send to WhatsApp" → pick the <i>"Message yourself"</i> chat (your own name at the top of the contact list). ' +
+    'On Telegram pick <b>Saved Messages</b>. The file then lives in that chat forever and can be re-downloaded anytime.</div>';
   h += '</div>';
 
   /* Restore */
@@ -101,6 +117,72 @@ function renderSettingsData(state) {
   h += '</div>';
 
   return h;
+}
+
+/* ============================================
+   SAVE BACKUP INTO A FOLDER ON THIS COMPUTER
+   Uses the File System Access API so you can
+   pick your project's backups/ folder directly.
+   encrypted = true → AES-256 with a passphrase,
+   which makes the file safe to store anywhere.
+   ============================================ */
+function saveBackupToFolder(encrypted) {
+  var stamp = new Date().toISOString().split('T')[0];
+
+  var writeOut = function(text, filename, mime) {
+    if (window.showSaveFilePicker) {
+      window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: encrypted ? 'Encrypted Life OS backup' : 'Life OS backup',
+                  accept: encrypted ? { 'application/octet-stream': ['.vault'] } : { 'application/json': ['.json'] } }]
+      }).then(function(handle) {
+        return handle.createWritable().then(function(w) {
+          return w.write(text).then(function(){ return w.close(); });
+        }).then(function() {
+          window.AppState.lastBackupIso = stamp;
+          saveData(); renderPage();
+          showToast('✅ Saved to your chosen folder!');
+        });
+      }).catch(function(e) {
+        if (e && e.name === 'AbortError') return;   /* user cancelled */
+        showToast('Could not save there: ' + (e.message||''), 'error');
+      });
+    } else {
+      /* Older browser — fall back to a normal download */
+      var blob = new Blob([text], { type: mime });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+      window.AppState.lastBackupIso = stamp;
+      saveData(); renderPage();
+      showToast('⬇️ Downloaded — now move it into vasavi-life-os\\backups\\');
+    }
+  };
+
+  if (!encrypted) {
+    writeOut(JSON.stringify(window.AppState, null, 2), 'life-os-backup-' + stamp + '.json', 'application/json');
+    return;
+  }
+
+  /* Encrypted path — reuse the Vault's proven crypto */
+  if (typeof vaultDeriveKey !== 'function' || !window.crypto || !crypto.subtle) {
+    showToast('Encryption not available in this browser.', 'error');
+    return;
+  }
+  var pass = prompt('Choose a passphrase for this encrypted backup.\n\n⚠️ Write it down — without it the file can NEVER be opened, by anyone.');
+  if (!pass) return;
+  if (pass.length < 6) { alert('Use at least 6 characters.'); return; }
+  var confirmPass = prompt('Type the same passphrase again to confirm:');
+  if (confirmPass !== pass) { alert('The passphrases did not match. Nothing was saved.'); return; }
+
+  var salt = _vB64(crypto.getRandomValues(new Uint8Array(16)).buffer);
+  vaultDeriveKey(pass, salt).then(function(key) {
+    return vaultEncrypt(key, window.AppState).then(function(pack) {
+      var payload = JSON.stringify({ lifeOsEncryptedBackup: 1, salt: salt, iv: pack.iv, ct: pack.ct, date: stamp });
+      writeOut(payload, 'life-os-backup-' + stamp + '.vault', 'application/octet-stream');
+    });
+  }).catch(function(e) { showToast('Encryption failed: ' + e.message, 'error'); });
 }
 
 /* Share the backup file directly to any app (WhatsApp, Telegram, Files…) */

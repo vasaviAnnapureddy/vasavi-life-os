@@ -242,6 +242,25 @@ function restoreData(file) {
   reader.onload = function(e) {
     try {
       var parsed = JSON.parse(e.target.result);
+
+      /* Encrypted .vault backup — ask for the passphrase */
+      if (parsed && parsed.lifeOsEncryptedBackup) {
+        if (typeof vaultDeriveKey !== 'function') { alert('Cannot decrypt in this browser.'); return; }
+        var pass = prompt('This backup is encrypted.\nEnter the passphrase you used when saving it:');
+        if (!pass) return;
+        vaultDeriveKey(pass, parsed.salt).then(function(key) {
+          return vaultDecrypt(key, { iv: parsed.iv, ct: parsed.ct });
+        }).then(function(data) {
+          if (!data) { alert('Wrong passphrase — nothing was restored.'); return; }
+          window.AppState = Object.assign({}, DEFAULT_STATE, data);
+          saveData();
+          if (typeof forceFullSync === 'function' && window.FB_READY) forceFullSync();
+          renderPage();
+          showToast('🔓 Encrypted backup restored!');
+        }).catch(function(){ alert('Could not decrypt that file.'); });
+        return;
+      }
+
       window.AppState = Object.assign({}, DEFAULT_STATE, parsed);
       saveData();
       /* Push the restored copy back to the cloud so every device matches */

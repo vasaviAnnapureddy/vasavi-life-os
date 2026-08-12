@@ -17,4 +17,19 @@ node_modules/
 Thumbs.db
 
 # Private config — never push
-utils/config.js.claude/
+utils/config.js
+
+# Local dev tooling
+.claude/
+
+# ============================================
+# YOUR PERSONAL DATA — NEVER GOES TO GITHUB
+# Plain backups contain your diary, memories,
+# money and health data. Keep them local only.
+# ============================================
+backups/*.json
+!backups/README.md
+
+# Encrypted backups (.vault) are safe to keep,
+# but stay private by default anyway:
+backups/*.vault
