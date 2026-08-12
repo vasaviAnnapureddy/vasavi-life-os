@@ -93,7 +93,7 @@ function aeCalendarHeatmap(year, month, valueMap, colorFn, labelFn, clickFnName)
     var isFuture = iso > todayIso;
     var lbl = labelFn ? labelFn(val) : (val > 0 ? String(val) : '');
     var click = (clickFnName && !isFuture) ? ' onclick="' + clickFnName + '(\'' + iso + '\')"' : '';
-    h += '<div' + click + ' title="' + iso + (val ? ' · ' + val : '') + ((clickFnName && !isFuture)?' — tap to change':'') + '" ' +
+    h += '<div' + click + ' title="' + iso + (val > 0 ? ' · ' + val : '') + ((clickFnName && !isFuture)?' — tap to change':'') + '" ' +
       'style="min-height:34px;border-radius:6px;background:' + col + ';' +
       'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
       ((clickFnName && !isFuture) ? 'cursor:pointer;' : '') +
@@ -222,6 +222,84 @@ function aeYearTotals(valueMap) {
     totals[y] = (totals[y]||0) + valueMap[iso];
   });
   return totals;
+}
+
+/* ============================================
+   📆 DAYS COUNT PANEL — the shared component
+   "How many days in this month, this year, and
+   all time?" plus every month of the year.
+   Used by timer, goals, gym, habits, planner,
+   books and memories so counting is consistent.
+   ============================================ */
+
+/* Active-DAY counts per month for a year (not value sums) */
+function aeMonthDayCounts(valueMap, year) {
+  var counts = new Array(12).fill(0);
+  Object.keys(valueMap).forEach(function(iso) {
+    if (parseInt(iso.substring(0,4)) === year && valueMap[iso] > 0) {
+      counts[parseInt(iso.substring(5,7)) - 1]++;
+    }
+  });
+  return counts;
+}
+
+/* Total days with any activity, all time */
+function aeTotalActiveDays(valueMap) {
+  return Object.keys(valueMap).filter(function(k){ return valueMap[k] > 0; }).length;
+}
+
+/* The panel itself. module = view key, valueMap = {iso:value} */
+function aeDaysPanel(module, valueMap, opts) {
+  opts = opts || {};
+  var color = opts.color || '#a855f7';
+  var word  = opts.word  || 'Days';
+  var label = opts.label || 'days';
+  var v     = aeGetView(module);
+  var now   = new Date();
+
+  var monthCounts = aeMonthDayCounts(valueMap, v.y);
+  var monthDays   = monthCounts[v.m];
+  var yearDays    = monthCounts.reduce(function(a,b){ return a+b; }, 0);
+  var allDays     = aeTotalActiveDays(valueMap);
+  var daysInMonth = new Date(v.y, v.m+1, 0).getDate();
+  var isCur       = (v.y === now.getFullYear() && v.m === now.getMonth());
+  var elapsed     = isCur ? now.getDate() : daysInMonth;
+
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">📆 ' + word + ' Count — Month · Year · All Time</div>';
+
+  h += '<div class="grid-3" style="margin-bottom:12px;">';
+  h += '<div class="stat-card" style="--stat-color:' + color + '"><div class="stat-value">' + monthDays + '</div>' +
+       '<div class="stat-label">' + AE_MONTHS[v.m] + ' ' + v.y + '</div>' +
+       '<div class="stat-sub">of ' + elapsed + ' days (' + pct(monthDays, elapsed) + '%)</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + yearDays + '</div>' +
+       '<div class="stat-label">' + v.y + ' Total</div><div class="stat-sub">' + label + ' this year</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + allDays + '</div>' +
+       '<div class="stat-label">All Time</div><div class="stat-sub">total ever</div></div>';
+  h += '</div>';
+
+  /* Every month of the selected year — clickable */
+  h += aeYearNav(module);
+  h += aeYearBarChart(monthCounts, isCur ? now.getMonth() : -1, color, function(n){ return n + 'd'; }, module);
+
+  /* Month-by-month written out, so nothing is hidden */
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;margin-top:8px;">';
+  monthCounts.forEach(function(n, i) {
+    var isNow = isCur && i === now.getMonth();
+    var sel   = i === v.m;
+    h += '<div onclick="aeOpenMonth(\'' + module + '\',' + i + ')" style="cursor:pointer;text-align:center;padding:6px 4px;border-radius:8px;' +
+      'background:' + (sel ? color + '22' : 'var(--card2)') + ';border:1px solid ' + (sel ? color : (isNow ? '#f59e0b' : 'var(--border)')) + ';">' +
+      '<div style="font-size:9px;color:#8899bb;">' + AE_MONTHS_SHORT[i] + '</div>' +
+      '<div style="font-size:14px;font-weight:800;color:' + (n > 0 ? color : '#556080') + ';">' + n + '</div>' +
+      '</div>';
+  });
+  h += '</div>';
+
+  var yearTotalDays = isCur ? Math.round((now - new Date(v.y,0,1)) / 86400000) + 1 : 365;
+  h += '<div style="font-size:11px;color:#8899bb;margin-top:10px;">In ' + v.y + ' you have ' + label +
+       ' on <b style="color:' + color + ';">' + yearDays + ' of ' + yearTotalDays + ' days</b> (' + pct(yearDays, yearTotalDays) + '% of the year).</div>';
+  h += '</div>';
+  return h;
 }
 
 /* Count of active days in a month */

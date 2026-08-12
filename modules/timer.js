@@ -212,9 +212,36 @@ function switchTimerAnalyticsTab(t) {
    FOCUS TIMER — DATA ANALYTICS VIEW
    Daily / Weekly / Monthly / Yearly
    ============================================ */
+/* Days she counts as "worked": real timer sessions OR a manual tick
+   (worked on herself without turning the timer on). Returns {iso:1}. */
+function focusWorkedMap(state) {
+  var map = {};
+  var byDate = aeFocusByDate(state);
+  Object.keys(byDate).forEach(function(iso){ if (byDate[iso] > 0) map[iso] = 1; });
+  var manual = state.focusManual || {};
+  Object.keys(manual).forEach(function(iso){ if (manual[iso]) map[iso] = 1; });
+  return map;
+}
+
+/* Tap a calendar day to mark/unmark "I worked today" (no timer needed).
+   If the day already has real timer minutes, it's locked as worked. */
+function focusToggleWorked(iso) {
+  var state = window.AppState;
+  if (!state.focusManual) state.focusManual = {};
+  var byDate = aeFocusByDate(state);
+  if ((byDate[iso]||0) > 0) {
+    showToast('That day already has timer minutes — it counts as worked. ✓');
+    return;
+  }
+  if (state.focusManual[iso]) { delete state.focusManual[iso]; showToast('Unmarked ' + iso); }
+  else { state.focusManual[iso] = 1; showToast('✓ Marked ' + iso + ' as worked!'); }
+  saveData(); renderPage();
+}
+
 function renderTimerAnalytics(state) {
   var tab = state.timerAnalyticsTab || 'monthly';
   var byDate = aeFocusByDate(state);
+  var workedMap = focusWorkedMap(state);   /* sessions + manual ticks */
   var target = (getAlertConfig && getAlertConfig().targetMins) || 120;
   var h = '';
 
@@ -224,16 +251,16 @@ function renderTimerAnalytics(state) {
   });
   h += '</div>';
 
-  /* Always-on top stats — 1 missed day never breaks your streak */
-  var streak = aeStreakFlexible(byDate, 1);
-  var totalDays = Object.keys(byDate).filter(function(k){ return byDate[k]>0; }).length;
+  /* Always-on top stats — streak counts worked days (timer OR manual tick) */
+  var streak = aeStreakFlexible(workedMap, 1);
+  var totalWorkedDays = Object.keys(workedMap).length;
   var targetDays = Object.keys(byDate).filter(function(k){ return byDate[k]>=target; }).length;
   var totalMins = 0; Object.keys(byDate).forEach(function(k){ totalMins += byDate[k]; });
 
   h += '<div class="grid-4" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + totalWorkedDays + '</div><div class="stat-label">Total Days Worked</div><div class="stat-sub">even without streak</div></div>';
   h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Day Streak</div><div class="stat-sub">1 off-day allowed</div></div>';
   h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + targetDays + '</div><div class="stat-label">Days Hit ' + target + 'm</div></div>';
-  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + totalDays + '</div><div class="stat-label">Total Active Days</div></div>';
   h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + Math.round(totalMins/60) + 'h</div><div class="stat-label">All-Time Focus</div></div>';
   h += '</div>';
 
@@ -307,7 +334,7 @@ function renderTimerAnalytics(state) {
 
   if (tab === 'monthly') {
     var v = aeGetView('timer');
-    var monthTotal = 0, monthActive = 0, monthHit = 0;
+    var monthTotal = 0, monthActive = 0, monthHit = 0, monthWorked = 0;
     Object.keys(byDate).forEach(function(iso) {
       if (parseInt(iso.substring(0,4))===v.y && parseInt(iso.substring(5,7))===v.m+1) {
         monthTotal += byDate[iso];
@@ -315,21 +342,39 @@ function renderTimerAnalytics(state) {
         if (byDate[iso] >= target) monthHit++;
       }
     });
+    Object.keys(workedMap).forEach(function(iso) {
+      if (parseInt(iso.substring(0,4))===v.y && parseInt(iso.substring(5,7))===v.m+1) monthWorked++;
+    });
+
+    /* Calendar value = minutes, but manual-worked days show a ✓.
+       Build a combined map so tapping works and manual days are visible. */
+    var calMap = {};
+    Object.keys(workedMap).forEach(function(iso){
+      if (parseInt(iso.substring(0,4))===v.y && parseInt(iso.substring(5,7))===v.m+1)
+        calMap[iso] = byDate[iso] || -1;   /* -1 = manual worked, no minutes */
+    });
+
     h += '<div class="card" style="margin-bottom:14px;">';
     h += aeMonthNav('timer');
-    h += aeCalendarHeatmap(v.y, v.m, byDate, aeFocusColor, function(val){ return val>0?val+'m':''; });
-    h += '<div style="display:flex;gap:8px;margin-top:10px;font-size:9px;color:#8899bb;flex-wrap:wrap;">';
-    [['#1a1a35','0m'],['#a855f7','<30m'],['#7c3aed','30m+'],['#06b6d4','60m+'],['#10b981',target+'m+ 🎯']].forEach(function(l) {
+    h += aeCalendarHeatmap(v.y, v.m, calMap, function(val){
+      return val === -1 ? '#0891b2' : aeFocusColor(val);   /* teal = manual worked */
+    }, function(val){ return val === -1 ? '✓' : (val>0 ? val+'m' : ''); }, 'focusToggleWorked');
+    h += '<div style="font-size:10px;color:#f59e0b;margin-top:8px;">👆 Worked without the timer? Tap any day to mark it — it counts toward your total &amp; streak.</div>';
+    h += '<div style="display:flex;gap:8px;margin-top:8px;font-size:9px;color:#8899bb;flex-wrap:wrap;">';
+    [['#1a1a35','0m'],['#0891b2','✓ worked (no timer)'],['#a855f7','<30m'],['#06b6d4','60m+'],['#10b981',target+'m+ 🎯']].forEach(function(l) {
       h += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:3px;background:' + l[0] + ';display:inline-block;"></span>' + l[1] + '</span>';
     });
     h += '</div></div>';
 
     h += '<div class="grid-4" style="margin-bottom:14px;">';
+    h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + monthWorked + '</div><div class="stat-label">Days Worked</div><div class="stat-sub">timer + ticked</div></div>';
     h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + Math.round(monthTotal/60) + 'h</div><div class="stat-label">Month Total</div><div class="stat-sub">' + monthTotal + ' mins</div></div>';
-    h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + monthActive + '</div><div class="stat-label">Active Days</div></div>';
     h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + monthHit + '</div><div class="stat-label">Target Days</div><div class="stat-sub">' + target + '+ mins</div></div>';
-    h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + (monthActive>0?Math.round(monthTotal/monthActive):0) + 'm</div><div class="stat-label">Avg / Active Day</div></div>';
+    h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + (monthActive>0?Math.round(monthTotal/monthActive):0) + 'm</div><div class="stat-label">Avg / Timer Day</div></div>';
     h += '</div>';
+
+    /* 📆 Days worked — month · year · all time · every month */
+    h += aeDaysPanel('timer', workedMap, { color:'#a855f7', word:'Days Worked', label:'worked days' });
 
     h += '<button class="btn-primary" style="width:100%;" onclick="timerMonthAISummary(this)">🤖 AI Summary — How Was ' + AE_MONTHS[v.m] + '?</button>';
     h += '<div id="timer-ai-summary" style="display:none;"></div>';

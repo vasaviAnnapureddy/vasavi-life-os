@@ -496,6 +496,9 @@ function renderGymAnalytics(state) {
   h += '<div style="font-size:10px;color:#f59e0b;margin-top:6px;">👆 Forgot to log a day? Just tap it on the calendar to mark/unmark gym — your streak updates honestly.</div>';
   h += '</div>';
 
+  /* 📆 Gym days — month · year · all time · every month */
+  h += aeDaysPanel('gym', byDate, { color:'#f97316', word:'Gym Days', label:'gym days' });
+
   /* Per-month bars for selected year */
   var monthVals = aeMonthTotals(byDate, v.y);
   h += '<div class="card" style="margin-bottom:14px;">';

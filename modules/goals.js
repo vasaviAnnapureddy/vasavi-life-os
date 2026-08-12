@@ -45,15 +45,115 @@ function renderGoals() {
     'onclick="switchGoalTab(\'bycat\')">🗂️ By Category</div>';
   h += '<div class="subtab ' + (tab === 'vision' ? 'active' : '') + '" ' +
     'onclick="switchGoalTab(\'vision\')">🌟 Vision</div>';
+  h += '<div class="subtab ' + (tab === 'analytics' ? 'active' : '') + '" ' +
+    'onclick="switchGoalTab(\'analytics\')">📊 Data Analytics</div>';
   h += '</div>';
 
-  if (tab === 'focus')    h += renderTodaysFocus(state);
-  if (tab === 'bytime')   h += renderByTime(state);
-  if (tab === 'bycat')    h += renderByCategory(state);
-  if (tab === 'vision')   h += renderVision(state);
-  if (tab === 'calendar') h += renderCalendarView(state);
+  if (tab === 'focus')     h += renderTodaysFocus(state);
+  if (tab === 'bytime')    h += renderByTime(state);
+  if (tab === 'bycat')     h += renderByCategory(state);
+  if (tab === 'vision')    h += renderVision(state);
+  if (tab === 'analytics') h += renderGoalsAnalytics(state);
+  if (tab === 'calendar')  h += renderCalendarView(state);
 
   return h;
+}
+
+/* ============================================
+   GOALS — DATA ANALYTICS
+   Days you completed goals, color-graded:
+   🟡 2 goals = yellow · 🟢 3+ = green.
+   Counts total days regardless of streak.
+   ============================================ */
+function renderGoalsAnalytics(state) {
+  var byDate = goalsDoneByDate(state);
+  var isoKeys = Object.keys(byDate);
+  var h = '';
+
+  if (isoKeys.length === 0) {
+    return '<div class="empty-state"><div class="emo">📊</div><p>No completed daily goals yet.<br>Tick your goals in Daily Focus — then your day-by-day analytics appear here!</p></div>';
+  }
+
+  /* All-time counts */
+  var totalDaysAny  = isoKeys.length;
+  var daysGreen     = isoKeys.filter(function(k){ return byDate[k] >= 3; }).length;
+  var daysYellow    = isoKeys.filter(function(k){ return byDate[k] === 2; }).length;
+  var streak        = aeStreakFlexible(byDate, 1);
+
+  h += '<div class="grid-4" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + totalDaysAny + '</div><div class="stat-label">Total Days w/ Goals</div><div class="stat-sub">even without streak</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">🟢 ' + daysGreen + '</div><div class="stat-label">Green Days</div><div class="stat-sub">3+ goals done</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">🟡 ' + daysYellow + '</div><div class="stat-label">Yellow Days</div><div class="stat-sub">2 goals done</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Day Streak</div><div class="stat-sub">1 off-day allowed</div></div>';
+  h += '</div>';
+
+  /* Month calendar colored by count */
+  var v = aeGetView('goals');
+  var mGreen = 0, mYellow = 0, mAny = 0, mTotal = 0;
+  isoKeys.forEach(function(iso) {
+    if (parseInt(iso.substring(0,4))===v.y && parseInt(iso.substring(5,7))===v.m+1) {
+      mAny++; mTotal += byDate[iso];
+      if (byDate[iso] >= 3) mGreen++; else if (byDate[iso] === 2) mYellow++;
+    }
+  });
+
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeMonthNav('goals');
+  h += aeCalendarHeatmap(v.y, v.m, byDate, goalDayColor, function(n){ return n > 0 ? String(n) : ''; });
+  h += '<div style="display:flex;gap:10px;margin-top:8px;font-size:9px;color:#8899bb;flex-wrap:wrap;">';
+  [['#1a1a35','0'],['#7c5800','1 goal'],['#f59e0b','🟡 2 goals'],['#10b981','🟢 3+ goals']].forEach(function(l) {
+    h += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:3px;background:' + l[0] + ';display:inline-block;"></span>' + l[1] + '</span>';
+  });
+  h += '</div>';
+  h += '<div style="font-size:11px;color:#8899bb;margin-top:10px;">' + AE_MONTHS[v.m] + ': <b style="color:#06b6d4;">' + mAny + ' days</b> with goals done · 🟢 ' + mGreen + ' green · 🟡 ' + mYellow + ' yellow · ' + mTotal + ' goals total</div>';
+  h += '</div>';
+
+  /* 📆 Days with goals done — month · year · all time */
+  h += aeDaysPanel('goals', byDate, { color:'#10b981', word:'Goal Days', label:'goal days' });
+
+  /* Yearly: goals completed per month */
+  var monthVals = new Array(12).fill(0);
+  isoKeys.forEach(function(iso){ if (parseInt(iso.substring(0,4))===v.y) monthVals[parseInt(iso.substring(5,7))-1] += byDate[iso]; });
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeYearNav('goals');
+  h += aeYearBarChart(monthVals, v.y===new Date().getFullYear()?new Date().getMonth():-1, '#10b981', function(vv){ return vv; }, 'goals');
+  h += '<div style="font-size:11px;color:#8899bb;">' + v.y + ' total: <b style="color:#10b981;">' + monthVals.reduce(function(a,b){return a+b;},0) + ' goals completed</b></div>';
+  h += '</div>';
+
+  /* Summary by color */
+  h += '<button class="btn-primary" style="width:100%;" onclick="goalsAISummary(this)">🤖 Summary — How Are My Goals This Month?</button>';
+  h += '<div id="goals-ai-summary" style="display:none;"></div>';
+
+  return h;
+}
+
+function goalsAISummary(btn) {
+  var state = window.AppState;
+  var v = aeGetView('goals');
+  var byDate = goalsDoneByDate(state);
+  var daysInMonth = new Date(v.y, v.m+1, 0).getDate();
+  var now = new Date();
+  var isCur = v.y===now.getFullYear() && v.m===now.getMonth();
+  var elapsed = isCur ? now.getDate() : daysInMonth;
+  var green=0, yellow=0, one=0, zero=0, total=0;
+  for (var d=1; d<=elapsed; d++) {
+    var iso = v.y + '-' + pad(v.m+1) + '-' + pad(d);
+    var n = byDate[iso] || 0;
+    total += n;
+    if (n>=3) green++; else if (n===2) yellow++; else if (n===1) one++; else zero++;
+  }
+  var productive = green + yellow;
+  var ctx = 'Daily goal completions for ' + AE_MONTHS[v.m] + ' ' + v.y + ' (day ' + elapsed + '):\n' +
+    'Green days (3+ goals): ' + green + '\nYellow days (2 goals): ' + yellow + '\n1-goal days: ' + one + '\nZero-goal days: ' + zero + '\nTotal goals completed: ' + total;
+  var fallback = '📊 Goals — ' + AE_MONTHS[v.m] + ' ' + v.y + ':\n' +
+    '• 🟢 ' + green + ' green days (3+ goals) + 🟡 ' + yellow + ' yellow days (2 goals) = ' + productive + ' strong days\n' +
+    '• ' + one + ' light days (1 goal) · ' + zero + ' empty days\n' +
+    '• ' + total + ' goals completed in ' + elapsed + ' days\n\n' +
+    (green >= 15 ? '🔥 Outstanding — you are hitting 3+ goals on most days. This is elite consistency.' :
+     productive >= 12 ? '💪 Strong month. Push a few yellow days to green by adding one more goal each morning.' :
+     productive >= 6 ? '⚡ Building. Aim for 2 goals minimum daily (yellow) — that alone doubles your output.' :
+     '🎯 Slow month for goals. Start tomorrow with just 2 tiny goals — a yellow day beats an empty one.');
+  aeAISummary('Goals Summary — ' + AE_MONTHS[v.m] + ' ' + v.y, ctx, fallback, btn, 'goals-ai-summary');
 }
 
 /* ============================================
@@ -734,7 +834,33 @@ function toggleGoal(tab, idx) {
   var goals = window.AppState.goals[tab];
   if (!goals || !goals[idx]) return;
   goals[idx].done = !goals[idx].done;
+  goals[idx].doneAt = goals[idx].done ? aeTodayIso() : '';  /* record completion day */
   saveData(); renderPage();
+}
+
+/* ============================================
+   GOAL COMPLETIONS BY DATE
+   Counts DAILY goals completed per calendar day.
+   Uses doneAt (recorded on completion), falling
+   back to deadline for older goals.
+   Returns { 'YYYY-MM-DD': count }
+   ============================================ */
+function goalsDoneByDate(state) {
+  var map = {};
+  var daily = (state.goals && state.goals.daily) || [];
+  daily.forEach(function(g) {
+    if (!g.done) return;
+    var iso = g.doneAt || g.deadline || '';
+    if (!iso || iso.length < 10) return;
+    iso = iso.substring(0, 10);
+    map[iso] = (map[iso] || 0) + 1;
+  });
+  return map;
+}
+
+/* Color by how many goals done that day: 3+ green, 2 yellow, 1 faint */
+function goalDayColor(n) {
+  return n >= 3 ? '#10b981' : n === 2 ? '#f59e0b' : n === 1 ? '#7c5800' : '#1a1a35';
 }
 
 function deleteGoal(tab, idx) {

@@ -176,19 +176,47 @@ function renderVaultOpen(state) {
   h += '</div>';
 
   h += '<div class="subtab-bar">';
-  [['talk','💬 Talk It Out'],['write','✍️ Private Diary'],['settings','⚙️ Control']].forEach(function(t) {
+  [['talk','💬 Talk It Out'],['write','✍️ Diary'],['review','📅 Monthly Review'],['settings','⚙️ Control']].forEach(function(t) {
     h += '<div class="subtab ' + (tab===t[0]?'active':'') + '" onclick="switchVaultTab(\'' + t[0] + '\')">' + t[1] + '</div>';
   });
   h += '</div>';
 
   if (tab === 'talk')     h += renderVaultTalk(state);
   if (tab === 'write')    h += renderVaultWrite(state);
+  if (tab === 'review')   h += renderVaultReview(state);
   if (tab === 'settings') h += renderVaultSettings(state);
 
   return h;
 }
 
 function switchVaultTab(t) { window.AppState.vaultTab = t; saveData(); renderPage(); }
+
+/* ---- diary shared helpers ---- */
+var VAULT_MOODS = [
+  ['storm', '⛈️', 'Heavy day',       '#6366f1'],
+  ['guilt', '💔', 'Guilt',           '#ef4444'],
+  ['fear',  '😨', 'Fear',            '#f59e0b'],
+  ['anger', '🔥', 'Anger',           '#f97316'],
+  ['secret','🤫', 'Just for me',     '#8899bb'],
+  ['light', '✨', 'Feeling lighter', '#10b981']
+];
+function vaultMood(key) {
+  var m = VAULT_MOODS.find(function(x){ return x[0] === key; });
+  return m || ['secret','🤫','Just for me','#8899bb'];
+}
+/* Full date with day name, e.g. "Monday, 14 July 2026" */
+function vaultDateName(ts) {
+  return new Date(ts).toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+}
+function vaultTimeName(ts) {
+  return new Date(ts).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+}
+/* Day-map {iso:1} for streak calc */
+function vaultDayMap() {
+  var map = {};
+  _vaultCache.entries.forEach(function(e){ map[aeIso(new Date(e.ts))] = 1; });
+  return map;
+}
 
 /* ---- 💬 TALK IT OUT — the private listener ---- */
 function renderVaultTalk(state) {
@@ -306,27 +334,67 @@ function renderVaultWrite(state) {
   var h = '';
   var entries = _vaultCache.entries;
 
+  /* Streak + stats header */
+  var dayMap = vaultDayMap();
+  var streak = aeStreakFlexible(dayMap, 1);
+  var daysJournaled = Object.keys(dayMap).length;
+  var todayIso = aeTodayIso();
+  var wroteToday = !!dayMap[todayIso];
+
+  h += '<div class="grid-3" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#ec4899"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Day Streak</div><div class="stat-sub">' + (wroteToday?'written today ✓':'write today to keep it') + '</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + daysJournaled + '</div><div class="stat-label">Days Journaled</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + entries.length + '</div><div class="stat-label">Total Entries</div></div>';
+  h += '</div>';
+
+  /* Today's date banner */
+  h += '<div style="text-align:center;font-size:12px;color:#8899bb;margin-bottom:12px;">📅 ' + vaultDateName(Date.now()) + '</div>';
+
+  /* New entry */
   h += '<div class="card" style="margin-bottom:14px;">';
-  h += '<div class="card-header">✍️ New Private Entry</div>';
+  h += '<div class="card-header">✍️ Write Today\'s Entry</div>';
   h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
-  [['storm','⛈️ Heavy day'],['guilt','💔 Guilt'],['fear','😨 Fear'],['anger','🔥 Anger'],['secret','🤫 Just for me'],['light','✨ Feeling lighter']].forEach(function(m) {
+  VAULT_MOODS.forEach(function(m) {
     var sel = (state.vaultMood||'secret') === m[0];
-    h += '<div onclick="setVaultMood(\'' + m[0] + '\')" style="padding:5px 10px;border-radius:99px;cursor:pointer;font-size:10px;font-weight:700;border:1px solid ' + (sel?'#ec4899':'var(--border)') + ';background:' + (sel?'#ec489922':'var(--card2)') + ';color:' + (sel?'#ec4899':'#8899bb') + ';">' + m[1] + '</div>';
+    h += '<div onclick="setVaultMood(\'' + m[0] + '\')" style="padding:5px 10px;border-radius:99px;cursor:pointer;font-size:10px;font-weight:700;border:1px solid ' + (sel?m[3]:'var(--border)') + ';background:' + (sel?m[3]+'22':'var(--card2)') + ';color:' + (sel?m[3]:'#8899bb') + ';">' + m[1] + ' ' + m[2] + '</div>';
   });
   h += '</div>';
-  h += '<textarea id="vault-entry" rows="5" placeholder="Nobody will ever read this except you. Write it raw."></textarea>';
+  h += '<textarea id="vault-entry" rows="5" placeholder="How did today feel, really? Nobody will ever read this except you. Write it raw."></textarea>';
   h += '<button class="btn-primary" style="width:100%;margin-top:8px;" onclick="addVaultEntry()">🔐 Seal This Entry</button>';
   h += '</div>';
 
+  /* On This Day — the magic of a lifelong diary */
+  var onThis = vaultOnThisDay(Date.now());
+  if (onThis.length) {
+    h += '<div class="card" style="margin-bottom:14px;border-left:3px solid #a855f7;">';
+    h += '<div class="card-header">🕰️ On This Day</div>';
+    onThis.forEach(function(e) {
+      var yearsAgo = new Date().getFullYear() - new Date(e.ts).getFullYear();
+      var mo = vaultMood(e.mood);
+      h += '<div style="margin-bottom:8px;">';
+      h += '<div style="font-size:10px;color:#a855f7;font-weight:700;">' + mo[1] + ' ' + yearsAgo + ' year' + (yearsAgo>1?'s':'') + ' ago — ' + vaultDateName(e.ts) + '</div>';
+      h += '<div style="font-size:12px;line-height:1.7;color:#c4c4d4;white-space:pre-wrap;">' + escHtml(e.text) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  /* Recent entries with full date + day names, grouped newest first */
   h += '<div class="card"><div class="card-header">Your Sealed Entries (' + entries.length + ')</div>';
   if (entries.length === 0) {
     h += '<div style="font-size:11px;color:#556080;text-align:center;padding:14px;">Empty so far. The first entry is the hardest — and the most freeing.</div>';
   } else {
-    var moodIcons = { storm:'⛈️', guilt:'💔', fear:'😨', anger:'🔥', secret:'🤫', light:'✨' };
+    var lastDay = '';
     entries.slice().reverse().forEach(function(e) {
-      h += '<div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;">';
+      var iso = aeIso(new Date(e.ts));
+      var mo = vaultMood(e.mood);
+      if (iso !== lastDay) {
+        lastDay = iso;
+        h += '<div style="font-size:11px;color:#ec4899;font-weight:800;margin:14px 0 6px;padding-bottom:4px;border-bottom:1px solid #1a1a35;">📅 ' + vaultDateName(e.ts) + '</div>';
+      }
+      h += '<div style="background:var(--card2);border:1px solid var(--border);border-left:3px solid ' + mo[3] + ';border-radius:10px;padding:12px;margin-bottom:8px;">';
       h += '<div style="display:flex;justify-content:space-between;margin-bottom:6px;">';
-      h += '<span style="font-size:10px;color:#ec4899;font-weight:700;">' + (moodIcons[e.mood]||'🤫') + ' ' + new Date(e.ts).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) + '</span>';
+      h += '<span style="font-size:10px;color:' + mo[3] + ';font-weight:700;">' + mo[1] + ' ' + mo[2] + ' · ' + vaultTimeName(e.ts) + '</span>';
       h += '<span onclick="deleteVaultEntry(' + e.ts + ')" style="font-size:11px;color:#556080;cursor:pointer;">🗑️ delete forever</span>';
       h += '</div>';
       h += '<div style="font-size:12px;line-height:1.8;color:#c4c4d4;white-space:pre-wrap;">' + escHtml(e.text) + '</div>';
@@ -335,6 +403,17 @@ function renderVaultWrite(state) {
   }
   h += '</div>';
   return h;
+}
+
+/* Entries written on the same day-of-year in PAST years */
+function vaultOnThisDay(ts) {
+  var d = new Date(ts);
+  var mmdd = pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  var thisYear = d.getFullYear();
+  return _vaultCache.entries.filter(function(e) {
+    var ed = new Date(e.ts);
+    return ed.getFullYear() < thisYear && pad(ed.getMonth()+1)+'-'+pad(ed.getDate()) === mmdd;
+  }).sort(function(a,b){ return b.ts - a.ts; });
 }
 
 function setVaultMood(m) { window.AppState.vaultMood = m; renderPage(); }
@@ -362,6 +441,141 @@ function deleteVaultEntry(ts) {
   window.AppState.vault.entries = window.AppState.vault.entries.filter(function(p){ return p !== pack && p.ct !== (pack&&pack.ct); });
   saveData(); renderPage();
   showToast('Gone. Forever.');
+}
+
+/* ---- 📅 MONTHLY REVIEW ---- */
+function renderVaultReview(state) {
+  var h = '';
+  var v = aeGetView('vaultReview');
+  var monthEntries = _vaultCache.entries.filter(function(e) {
+    var d = new Date(e.ts);
+    return d.getFullYear() === v.y && d.getMonth() === v.m;
+  }).sort(function(a,b){ return a.ts - b.ts; });
+
+  /* Month navigation */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeMonthNav('vaultReview');
+
+  if (monthEntries.length === 0) {
+    h += '<div class="empty-state" style="padding:20px;"><div class="emo">📅</div><p>No entries in ' + AE_MONTHS[v.m] + ' ' + v.y + '.<br>Use ◀ ▶ to look back at other months.</p></div>';
+    h += '</div>';
+    return h;
+  }
+
+  /* Stats */
+  var dayMap = {};
+  monthEntries.forEach(function(e){ dayMap[aeIso(new Date(e.ts))] = (dayMap[aeIso(new Date(e.ts))]||0) + 1; });
+  var daysWritten = Object.keys(dayMap).length;
+  var words = monthEntries.reduce(function(a,e){ return a + e.text.trim().split(/\s+/).length; }, 0);
+  var daysInMonth = new Date(v.y, v.m+1, 0).getDate();
+
+  h += '<div style="text-align:center;padding:6px 0 12px;">';
+  h += '<div style="font-size:11px;color:#8899bb;">' + AE_MONTHS[v.m] + ' ' + v.y + '</div>';
+  h += '<div style="font-size:30px;font-weight:900;color:#ec4899;">' + monthEntries.length + ' entries</div>';
+  h += '<div style="font-size:11px;color:#8899bb;">across ' + daysWritten + ' of ' + daysInMonth + ' days · ' + words.toLocaleString('en-IN') + ' words written</div>';
+  h += '</div>';
+
+  /* Calendar heatmap — pink intensity by entries per day */
+  h += aeCalendarHeatmap(v.y, v.m, dayMap, function(n){
+    return n >= 3 ? '#9d174d' : n >= 2 ? '#be185d' : n >= 1 ? '#ec4899' : '#1a1a35';
+  }, function(n){ return n > 0 ? '✍️' : ''; });
+  h += '<div style="font-size:9px;color:#8899bb;margin-top:8px;text-align:center;">✍️ = a day you wrote · darker pink = more entries that day</div>';
+  h += '</div>';
+
+  /* Mood breakdown */
+  var moodCounts = {};
+  monthEntries.forEach(function(e){ moodCounts[e.mood] = (moodCounts[e.mood]||0) + 1; });
+  h += '<div class="card" style="margin-bottom:14px;"><div class="card-header">How ' + AE_MONTHS[v.m] + ' Felt</div>';
+  VAULT_MOODS.forEach(function(m) {
+    var c = moodCounts[m[0]] || 0;
+    if (c === 0) return;
+    h += aeBarRow(m[1] + ' ' + m[2], c, monthEntries.length, m[3], c + ' day' + (c>1?'s':''));
+  });
+  /* One-line honest read (heavy vs light, never contradictory) */
+  var heavy = (moodCounts.storm||0)+(moodCounts.guilt||0)+(moodCounts.fear||0)+(moodCounts.anger||0);
+  var lightC = moodCounts.light||0;
+  h += '<div style="margin-top:10px;padding:10px;background:#0d0d1a;border-radius:8px;font-size:11px;color:#a0aec0;line-height:1.7;">' +
+    (lightC > heavy ? 'More ✨ light days than heavy ones this month — that\'s growth. 💜' :
+     heavy > lightC ? 'This month carried more heavy days than light ones. Writing them down was the brave part. 🤍' :
+     'A balanced month — real ups and downs, all of them yours.') + '</div>';
+  h += '</div>';
+
+  /* This month in past years */
+  var pastYears = _vaultCache.entries.filter(function(e) {
+    var d = new Date(e.ts);
+    return d.getMonth() === v.m && d.getFullYear() < v.y;
+  }).sort(function(a,b){ return b.ts - a.ts; });
+  if (pastYears.length) {
+    h += '<div class="card" style="margin-bottom:14px;border-left:3px solid #a855f7;"><div class="card-header">🕰️ ' + AE_MONTHS[v.m] + ' in Past Years</div>';
+    pastYears.slice(0, 5).forEach(function(e) {
+      var mo = vaultMood(e.mood);
+      h += '<div style="margin-bottom:8px;"><div style="font-size:10px;color:#a855f7;font-weight:700;">' + mo[1] + ' ' + vaultDateName(e.ts) + '</div>';
+      h += '<div style="font-size:12px;line-height:1.7;color:#c4c4d4;white-space:pre-wrap;">' + escHtml(e.text.substring(0, 220)) + (e.text.length>220?'…':'') + '</div></div>';
+    });
+    h += '</div>';
+  }
+
+  /* Optional private AI reflection */
+  h += '<div class="card">';
+  h += '<div class="card-header">🤖 Monthly Reflection (optional)</div>';
+  if (state.vaultJustListen) {
+    h += '<div style="font-size:11px;color:#8899bb;line-height:1.7;">You have <b style="color:#ec4899;">Just Listen mode</b> ON, so nothing is sent anywhere — the review above stays 100% on your device. Turn Just Listen off (in the Talk tab) if you want a caring AI reflection on this month.</div>';
+  } else {
+    h += '<div style="font-size:11px;color:#8899bb;line-height:1.7;margin-bottom:10px;">This sends only <b>this month\'s entries</b> to the AI (never your whole diary) to write you a gentle, private reflection. Your call.</div>';
+    h += '<button class="btn-primary" style="width:100%;" onclick="vaultMonthReflect(this)">🤖 Reflect on ' + AE_MONTHS[v.m] + ' ' + v.y + '</button>';
+    h += '<div id="vault-reflect-out" style="display:none;"></div>';
+  }
+  h += '</div>';
+
+  return h;
+}
+
+function vaultMonthReflect(btn) {
+  var state = window.AppState;
+  var v = aeGetView('vaultReview');
+  var monthEntries = _vaultCache.entries.filter(function(e) {
+    var d = new Date(e.ts);
+    return d.getFullYear() === v.y && d.getMonth() === v.m;
+  }).sort(function(a,b){ return a.ts - b.ts; });
+  if (!monthEntries.length) return;
+
+  var out = document.getElementById('vault-reflect-out');
+  out.style.display = 'block';
+  out.innerHTML = '<div style="padding:10px;font-size:11px;color:#ec4899;">🤖 Reading your month with care...</div>';
+  btn.disabled = true;
+
+  var diary = monthEntries.map(function(e){ return vaultDateName(e.ts) + ' [' + vaultMood(e.mood)[2] + ']: ' + e.text; }).join('\n\n');
+  var sys = 'You are Vasavi\'s gentle, private reflection companion. She is 23, Bengaluru. Below is her private diary ' +
+    'for one month. Write her a warm, non-judgemental monthly reflection: 1) the emotional arc you notice across the month, ' +
+    '2) one strength or moment of growth she may not have noticed, 3) one gentle, caring suggestion for next month. ' +
+    'Never lecture. Speak like the kindest friend. Under 180 words. If there are signs she is really struggling, ' +
+    'lovingly mention iCall 9152987821 (free India helpline).';
+
+  var finish = function(reply) {
+    btn.disabled = false;
+    out.innerHTML = '<div style="margin-top:10px;background:#0d0d1a;border-left:3px solid #ec4899;padding:12px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.9;white-space:pre-wrap;color:#a0aec0;">' + escHtml(reply) + '</div>' +
+      '<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="vaultSealReflection(' + v.y + ',' + v.m + ',this)">🔐 Seal this reflection into my diary</button>';
+    window._vaultLastReflection = reply;
+  };
+
+  if (typeof groqChat === 'function' && typeof getApiKey === 'function' && getApiKey()) {
+    groqChat(sys, [{ role:'user', text: diary }], finish);
+  } else {
+    finish('Add your free Groq key in AI Assistant for an AI reflection. Even without it, look above: you wrote ' + monthEntries.length + ' times this month. That consistency is its own kind of strength.');
+  }
+}
+
+function vaultSealReflection(y, m, btn) {
+  if (!window._vaultLastReflection || !_vaultKey) return;
+  var entry = { text: '🤖 Monthly reflection for ' + AE_MONTHS[m] + ' ' + y + ':\n\n' + window._vaultLastReflection, mood: 'light', ts: Date.now() };
+  vaultEncrypt(_vaultKey, entry).then(function(pack) {
+    entry._pack = pack;
+    _vaultCache.entries.push(entry);
+    window.AppState.vault.entries.push(pack);
+    saveData();
+    if (btn) { btn.disabled = true; btn.textContent = '✓ Sealed into your diary'; }
+    showToast('🔐 Reflection sealed.');
+  });
 }
 
 /* ---- ⚙️ CONTROL — her delete authority ---- */

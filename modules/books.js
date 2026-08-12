@@ -7,6 +7,15 @@ function renderBooks() {
   var state = window.AppState;
   var books = state.books || [];
 
+  /* ---- VIEW SWITCHER ---- */
+  var view = state.booksView || 'library';
+  var vh = '<div class="subtab-bar">';
+  [['library','📚 My Books'],['analytics','📊 Data Analytics']].forEach(function(t) {
+    vh += '<div class="subtab ' + (view===t[0]?'active':'') + '" onclick="switchBooksView(\'' + t[0] + '\')">' + t[1] + '</div>';
+  });
+  vh += '</div>';
+  if (view === 'analytics') return vh + renderBooksAnalytics(state);
+
   var completed = books.filter(function(b) {
     return (b.done || 0) >= (b.total || 1);
   }).length;
@@ -14,7 +23,7 @@ function renderBooks() {
     return a + (b.done || 0);
   }, 0);
 
-  var h = '';
+  var h = vh;
 
   /* ---- STATS ---- */
   h += '<div class="grid-3" style="margin-bottom:14px;">';
@@ -281,7 +290,7 @@ function quickAddBook(title, author, emoji) {
 function updateBookPages(idx) {
   var book = window.AppState.books[idx];
   var val  = prompt(
-    'Pages read so far (out of ' + book.total + '):\nCurrently: ' + book.done
+    'Pages read so far (out of ' + (book.total || '?') + '):\nCurrently: ' + (book.done || 0)
   );
   if (val === null) return;
   var pages = parseInt(val);
@@ -289,9 +298,153 @@ function updateBookPages(idx) {
     alert('Please enter a valid number.');
     return;
   }
-  window.AppState.books[idx].done = Math.min(pages, book.total);
+
+  /* Cap only when a total is known (total 0 = unknown length) */
+  var newDone = book.total > 0 ? Math.min(pages, book.total) : pages;
+  var delta   = newDone - (book.done || 0);
+
+  /* Log pages read PER DAY so monthly/yearly reading analytics work */
+  if (delta > 0) {
+    if (!window.AppState.bookLog) window.AppState.bookLog = {};
+    var iso = aeTodayIso();
+    window.AppState.bookLog[iso] = (window.AppState.bookLog[iso] || 0) + delta;
+    /* Remember when each book was finished */
+    if (book.total > 0 && newDone >= book.total && !book.finishedOn) {
+      book.finishedOn = iso;
+    }
+  }
+
+  window.AppState.books[idx].done = newDone;
   saveData();
   renderPage();
+  if (delta > 0) showToast('📖 +' + delta + ' pages logged today!');
+}
+
+function switchBooksView(v) { window.AppState.booksView = v; saveData(); renderPage(); }
+
+/* ============================================
+   BOOKS — DATA ANALYTICS
+   Pages this month / year / all time, days read,
+   currently reading, completed books, per-month
+   pages, and a reading summary.
+   ============================================ */
+function renderBooksAnalytics(state) {
+  var books = state.books || [];
+  var log   = state.bookLog || {};
+  var h = '';
+  var now = new Date();
+  var v = aeGetView('books');
+
+  var monthPages = aeMonthTotals(log, v.y)[v.m];
+  var yearPagesArr = aeMonthTotals(log, v.y);
+  var yearPages = yearPagesArr.reduce(function(a,b){ return a+b; }, 0);
+  var allPages = Object.keys(log).reduce(function(a,k){ return a + log[k]; }, 0);
+  var daysRead = aeTotalActiveDays(log);
+
+  /* Books split */
+  var reading   = books.filter(function(b){ return (b.done||0) > 0 && (!b.total || b.done < b.total); });
+  var completed = books.filter(function(b){ return b.total > 0 && (b.done||0) >= b.total; });
+  var notStarted= books.filter(function(b){ return !(b.done||0); });
+
+  /* Top stats */
+  h += '<div class="grid-4" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#06b6d4"><div class="stat-value">' + monthPages + '</div><div class="stat-label">Pages in ' + AE_MONTHS_SHORT[v.m] + '</div><div class="stat-sub">' + v.y + '</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + yearPages + '</div><div class="stat-label">Pages in ' + v.y + '</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + completed.length + '</div><div class="stat-label">Books Finished</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#f59e0b"><div class="stat-value">' + allPages + '</div><div class="stat-label">Pages All Time</div><div class="stat-sub">across ' + daysRead + ' reading days</div></div>';
+  h += '</div>';
+
+  /* 📆 Reading days — month · year · all time */
+  h += aeDaysPanel('books', log, { color:'#06b6d4', word:'Reading Days', label:'reading days' });
+
+  /* Pages per month bars */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">📖 Pages Read Each Month — ' + v.y + '</div>';
+  h += aeYearBarChart(yearPagesArr, v.y===now.getFullYear()?now.getMonth():-1, '#06b6d4', function(n){ return n; }, 'books');
+  h += '<div style="font-size:11px;color:#8899bb;">' + v.y + ' total: <b style="color:#06b6d4;">' + yearPages + ' pages</b>' +
+       (yearPages>0 ? ' · about ' + Math.round(yearPages/12) + ' pages/month average' : '') + '</div>';
+  h += '</div>';
+
+  /* Monthly reading calendar */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += aeMonthNav('books');
+  h += aeCalendarHeatmap(v.y, v.m, log, function(n){
+    return n >= 50 ? '#0e7490' : n >= 20 ? '#06b6d4' : n > 0 ? '#67e8f9' : '#1a1a35';
+  }, function(n){ return n > 0 ? n : ''; });
+  h += '<div style="font-size:9px;color:#8899bb;margin-top:8px;">Numbers = pages read that day · darker = bigger reading day</div>';
+  h += '</div>';
+
+  /* Currently reading */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">📚 Currently Reading (' + reading.length + ')</div>';
+  if (reading.length) {
+    reading.forEach(function(b) {
+      var p = b.total > 0 ? pct(b.done||0, b.total) : 0;
+      var left = b.total > 0 ? (b.total - (b.done||0)) : null;
+      h += '<div style="margin-bottom:12px;">';
+      h += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">' +
+        '<span style="font-weight:700;">' + (b.emoji||'📖') + ' ' + escHtml(b.name) + '</span>' +
+        '<span style="color:#06b6d4;">' + (b.done||0) + (b.total>0 ? '/' + b.total + ' (' + p + '%)' : ' pages') + '</span></div>';
+      h += '<div class="progress-bar"><div class="progress-fill" style="width:' + Math.min(p,100) + '%;background:#06b6d4;"></div></div>';
+      if (left !== null) h += '<div style="font-size:10px;color:#8899bb;margin-top:3px;">' + left + ' pages left' + (b.author?' · '+escHtml(b.author):'') + '</div>';
+      h += '</div>';
+    });
+  } else {
+    h += '<div style="font-size:11px;color:#556080;text-align:center;padding:10px;">No book in progress. Start one from My Books!</div>';
+  }
+  h += '</div>';
+
+  /* Completed */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">✅ Finished Books (' + completed.length + ')</div>';
+  if (completed.length) {
+    completed.forEach(function(b) {
+      h += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1a1a35;font-size:12px;">';
+      h += '<span>' + (b.emoji||'📖') + ' ' + escHtml(b.name) + (b.author?' <span style="color:#556080;">— '+escHtml(b.author)+'</span>':'') + '</span>';
+      h += '<span style="color:#10b981;font-weight:700;">' + b.total + 'p' + (b.finishedOn?' · '+b.finishedOn:'') + '</span></div>';
+    });
+  } else {
+    h += '<div style="font-size:11px;color:#556080;text-align:center;padding:10px;">No books finished yet — the first one is coming!</div>';
+  }
+  if (notStarted.length) {
+    h += '<div style="font-size:11px;color:#f59e0b;margin-top:10px;">📕 ' + notStarted.length + ' book' + (notStarted.length>1?'s':'') + ' not started yet: ' +
+      notStarted.slice(0,4).map(function(b){ return escHtml(b.name); }).join(', ') + (notStarted.length>4?'…':'') + '</div>';
+  }
+  h += '</div>';
+
+  h += '<button class="btn-primary" style="width:100%;" onclick="booksAISummary(this)">🤖 Summary — My Reading</button>';
+  h += '<div id="books-ai-summary" style="display:none;"></div>';
+
+  return h;
+}
+
+function booksAISummary(btn) {
+  var state = window.AppState;
+  var v = aeGetView('books');
+  var log = state.bookLog || {};
+  var books = state.books || [];
+  var monthPages = aeMonthTotals(log, v.y)[v.m];
+  var yearPages = aeMonthTotals(log, v.y).reduce(function(a,b){ return a+b; }, 0);
+  var monthDays = aeActiveDaysInMonth(log, v.y, v.m);
+  var reading = books.filter(function(b){ return (b.done||0)>0 && (!b.total || b.done<b.total); });
+  var completed = books.filter(function(b){ return b.total>0 && (b.done||0)>=b.total; });
+  var now = new Date();
+  var isCur = v.y===now.getFullYear() && v.m===now.getMonth();
+  var elapsed = isCur ? now.getDate() : new Date(v.y, v.m+1, 0).getDate();
+
+  var ctx = 'Reading data for ' + AE_MONTHS[v.m] + ' ' + v.y + ':\n' +
+    'Pages this month: ' + monthPages + ' across ' + monthDays + ' reading days (of ' + elapsed + ' days).\n' +
+    'Pages this year: ' + yearPages + '.\n' +
+    'Currently reading: ' + (reading.map(function(b){ return b.name+' ('+(b.done||0)+'/'+(b.total||'?')+')'; }).join(', ')||'none') + '\n' +
+    'Finished books: ' + (completed.map(function(b){ return b.name; }).join(', ')||'none');
+  var fallback = '📖 Reading — ' + AE_MONTHS[v.m] + ' ' + v.y + ':\n' +
+    '• ' + monthPages + ' pages across ' + monthDays + ' reading days' + (monthDays>0 ? ' (~' + Math.round(monthPages/monthDays) + ' pages per reading day)' : '') + '\n' +
+    '• ' + yearPages + ' pages so far in ' + v.y + '\n' +
+    '• ' + completed.length + ' book' + (completed.length===1?'':'s') + ' finished · ' + reading.length + ' in progress\n\n' +
+    (monthDays >= 20 ? '🔥 You read on most days this month — that is how books actually get finished.' :
+     monthDays >= 8  ? '💪 Steady reading. Try 10 pages before bed daily — it compounds into ~300 pages a month.' :
+     '📕 Reading slipped this month. Pick the book you are closest to finishing and read just 10 pages tonight.');
+  aeAISummary('Reading Summary — ' + AE_MONTHS[v.m] + ' ' + v.y, ctx, fallback, btn, 'books-ai-summary');
 }
 
 function deleteBook(idx) {

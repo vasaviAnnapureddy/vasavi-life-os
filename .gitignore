@@ -17,4 +17,4 @@ node_modules/
 Thumbs.db
 
 # Private config — never push
-utils/config.js
+utils/config.js.claude/

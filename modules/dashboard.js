@@ -301,6 +301,7 @@ function toggleDashQuickGoal(idx) {
   var daily = window.AppState.goals && window.AppState.goals.daily;
   if (!Array.isArray(daily) || !daily[idx]) return;
   daily[idx].done = !daily[idx].done;
+  daily[idx].doneAt = daily[idx].done ? aeTodayIso() : '';
   saveData(); renderPage();
 }
 

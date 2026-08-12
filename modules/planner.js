@@ -44,11 +44,23 @@ function renderPlanner() {
   var skipCnt  = blocks.filter(function(b) { return b.status === 'skip'; }).length;
   var planPct  = pct(doneCnt, blocks.length);
 
+  /* Keep today's archive fresh so review is accurate even without a toggle */
+  if (doneCnt > 0 || skipCnt > 0) archiveTodayPlanner();
+
   /* Daily goals */
   var dailyGoals  = state.goals.daily || [];
   var goalsDone   = dailyGoals.filter(function(g) { return g.done; }).length;
 
-  var h = '';
+  /* ---- VIEW SWITCHER: Plan | Review ---- */
+  var view = state.plannerView || 'plan';
+  var vh = '<div class="subtab-bar">';
+  [['plan','📋 Today\'s Plan'],['review','📊 Week & Month Review']].forEach(function(t) {
+    vh += '<div class="subtab ' + (view===t[0]?'active':'') + '" onclick="switchPlannerView(\'' + t[0] + '\')">' + t[1] + '</div>';
+  });
+  vh += '</div>';
+  if (view === 'review') return vh + renderPlannerReview(state);
+
+  var h = vh;
 
   /* ---- DATE HEADER ---- */
   h += '<div style="background:linear-gradient(135deg,#0d0d22,#0a1020);' +
@@ -285,13 +297,138 @@ function setMood(mood) {
   renderPage();
 }
 
+function switchPlannerView(v) { window.AppState.plannerView = v; saveData(); renderPage(); }
+
+/* ============================================
+   PLANNER — WEEK & MONTH REVIEW
+   How much you completed + the main things you
+   keep skipping, with a summary.
+   ============================================ */
+function renderPlannerReview(state) {
+  var arch = state.plannerArchive || {};
+  var h = '';
+  var now = new Date();
+
+  /* Aggregate a period: returns {days, done, total, skipCount:{label:n}, doneCount:{label:n}} */
+  function aggregate(fromDate) {
+    var res = { days:0, done:0, total:0, skipCount:{}, doneCount:{} };
+    Object.keys(arch).forEach(function(iso) {
+      var d = new Date(iso);
+      if (isNaN(d) || d < fromDate || d > now) return;
+      var a = arch[iso];
+      res.days++;
+      res.done  += (a.done||[]).length;
+      res.total += (a.total||0);
+      (a.skipped||[]).forEach(function(l){ res.skipCount[l] = (res.skipCount[l]||0)+1; });
+      (a.done||[]).forEach(function(l){ res.doneCount[l] = (res.doneCount[l]||0)+1; });
+    });
+    return res;
+  }
+
+  var weekStart = new Date(now); weekStart.setDate(now.getDate()-6); weekStart.setHours(0,0,0,0);
+  var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  var wk = aggregate(weekStart);
+  var mo = aggregate(monthStart);
+
+  if (wk.days === 0 && mo.days === 0) {
+    return '<div class="empty-state"><div class="emo">📊</div><p>No plan history yet.<br>Tick your time blocks ✓ or ✗ in Today\'s Plan — your week &amp; month review builds from there.</p></div>';
+  }
+
+  /* 📆 Days you followed your plan — month · year · all time */
+  var plannedDays = {};
+  Object.keys(arch).forEach(function(iso){ if ((arch[iso].done||[]).length > 0) plannedDays[iso] = 1; });
+  h += aeDaysPanel('planner', plannedDays, { color:'#3b82f6', word:'Plan Days', label:'days you followed the plan' });
+
+  /* Completion cards */
+  h += '<div class="grid-2" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + pct(wk.done, wk.total||1) + '%</div><div class="stat-label">This Week Completed</div><div class="stat-sub">' + wk.done + '/' + wk.total + ' blocks · ' + wk.days + ' days</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + pct(mo.done, mo.total||1) + '%</div><div class="stat-label">This Month Completed</div><div class="stat-sub">' + mo.done + '/' + mo.total + ' blocks · ' + mo.days + ' days</div></div>';
+  h += '</div>';
+
+  /* What you're NOT doing — most-skipped blocks this month */
+  var skips = Object.keys(mo.skipCount).map(function(l){ return { label:l, n:mo.skipCount[l] }; })
+    .sort(function(a,b){ return b.n - a.n; });
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">⚠️ What You Keep Skipping (this month)</div>';
+  if (skips.length === 0) {
+    h += '<div style="font-size:11px;color:#10b981;text-align:center;padding:10px;">Nothing marked skipped yet — either you\'re crushing it, or mark ✗ on blocks you miss so I can spot patterns.</div>';
+  } else {
+    skips.slice(0, 6).forEach(function(s) {
+      h += aeBarRow(s.label, s.n, mo.days||1, '#ef4444', s.n + ' day' + (s.n>1?'s':'') + ' skipped');
+    });
+    h += '<div style="font-size:11px;color:#f59e0b;margin-top:8px;">💡 Your #1 gap is <b>' + escHtml(skips[0].label) + '</b> — skipped ' + skips[0].n + ' days. Protect that block first next week.</div>';
+  }
+  h += '</div>';
+
+  /* What you're most consistent at */
+  var dones = Object.keys(mo.doneCount).map(function(l){ return { label:l, n:mo.doneCount[l] }; })
+    .sort(function(a,b){ return b.n - a.n; });
+  if (dones.length) {
+    h += '<div class="card" style="margin-bottom:14px;">';
+    h += '<div class="card-header">✅ Your Most Consistent Blocks</div>';
+    dones.slice(0, 5).forEach(function(s) {
+      h += aeBarRow(s.label, s.n, mo.days||1, '#10b981', s.n + ' day' + (s.n>1?'s':''));
+    });
+    h += '</div>';
+  }
+
+  /* Summary */
+  h += '<button class="btn-primary" style="width:100%;" onclick="plannerAISummary(this)">🤖 Summary — This Month\'s Plan</button>';
+  h += '<div id="planner-ai-summary" style="display:none;"></div>';
+
+  return h;
+}
+
+function plannerAISummary(btn) {
+  var state = window.AppState;
+  var arch = state.plannerArchive || {};
+  var now = new Date();
+  var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  var done=0, total=0, days=0, skipCount={}, doneCount={};
+  Object.keys(arch).forEach(function(iso) {
+    var d = new Date(iso);
+    if (isNaN(d) || d < monthStart || d > now) return;
+    var a = arch[iso]; days++; done += (a.done||[]).length; total += (a.total||0);
+    (a.skipped||[]).forEach(function(l){ skipCount[l]=(skipCount[l]||0)+1; });
+    (a.done||[]).forEach(function(l){ doneCount[l]=(doneCount[l]||0)+1; });
+  });
+  var skips = Object.keys(skipCount).map(function(l){ return l+' ('+skipCount[l]+'x)'; }).join(', ') || 'none';
+  var tops  = Object.keys(doneCount).sort(function(a,b){ return doneCount[b]-doneCount[a]; }).slice(0,3).join(', ') || 'none';
+  var ctx = 'Daily planner block completion for ' + AE_MONTHS[now.getMonth()] + ':\n' +
+    'Tracked ' + days + ' days. Completed ' + done + '/' + total + ' blocks (' + pct(done,total||1) + '%).\n' +
+    'Most skipped blocks: ' + skips + '\nMost consistent blocks: ' + tops;
+  var topSkip = Object.keys(skipCount).sort(function(a,b){ return skipCount[b]-skipCount[a]; })[0];
+  var fallback = '📊 ' + AE_MONTHS[now.getMonth()] + ' plan:\n' +
+    '• Completed ' + pct(done,total||1) + '% of your planned blocks across ' + days + ' tracked days\n' +
+    '• Strongest: ' + tops + '\n' +
+    (topSkip ? '• Biggest gap: ' + topSkip + ' — the block you skip most\n\n' : '\n') +
+    (pct(done,total||1) >= 70 ? '🔥 You\'re following your plan well. Keep protecting your strong blocks.' :
+     pct(done,total||1) >= 40 ? '💪 Decent follow-through. ' + (topSkip?'Fix one thing: guard your "'+topSkip+'" block next week.':'Mark ✗ on missed blocks to find your pattern.') :
+     '⚡ The plan and the day are drifting apart. Pick your 3 non-negotiable blocks and protect only those first.');
+  aeAISummary('Planner Summary — ' + AE_MONTHS[now.getMonth()], ctx, fallback, btn, 'planner-ai-summary');
+}
+
 function setBlockStatus(idx, status) {
   var blocks = window.AppState.planner.blocks;
   if (!blocks || !blocks[idx]) return;
   /* Toggle off if same status */
   blocks[idx].status = blocks[idx].status === status ? '' : status;
+  archiveTodayPlanner();
   saveData();
   renderPage();
+}
+
+/* Save today's block completion FOREVER so weekly/monthly
+   review works (the live planner resets each day). */
+function archiveTodayPlanner() {
+  var state = window.AppState;
+  var blocks = (state.planner && state.planner.blocks) || [];
+  if (!state.plannerArchive) state.plannerArchive = {};
+  var done = blocks.filter(function(b){ return b.status === 'done'; }).map(function(b){ return b.label; });
+  var skipped = blocks.filter(function(b){ return b.status === 'skip'; }).map(function(b){ return b.label; });
+  state.plannerArchive[aeTodayIso()] = {
+    done: done, skipped: skipped, total: blocks.length
+  };
 }
 
 function addTimeBlock() {

@@ -9,6 +9,8 @@
    ============================================ */
 var PAGE_TITLES = {
   dashboard:  'Dashboard',
+  rituals:    'Daily Rituals',
+  agent:      'Savi Agent',
   planner:    'Daily Planner',
   timer:      'Focus Timer',
   goals:      'Goals OS',
@@ -31,12 +33,15 @@ var PAGE_TITLES = {
   journal:    'Journal + Talk',
   memories:   'Life Memories',
   vault:      'The Vault',
+  settings:   'Settings & Data Safety',
   analytics:  'Analytics',
   ai:         'AI Assistant'
 };
 
 var PAGE_SUBS = {
   dashboard:  'Your life at a glance',
+  rituals:    'Start right. End clear.',
+  agent:      'Say it. I will do it.',
   planner:    'Plan. Execute. Reflect.',
   timer:      'Every minute logged is proof.',
   goals:      'Nothing falls through the cracks.',
@@ -59,6 +64,7 @@ var PAGE_SUBS = {
   journal:    'Talk to your OS. It listens.',
   memories:   'The book of your life, chapter by chapter.',
   vault:      'For your eyes only. Encrypted.',
+  settings:   'Backup, sign-in, and keeping your data forever.',
   analytics:  'See your life as data.',
   ai:         'Your personal AI mentor.'
 };
@@ -103,6 +109,8 @@ function renderPage() {
 
   var renderers = {
     dashboard:  typeof renderDashboard  === 'function' ? renderDashboard  : null,
+    rituals:    typeof renderRituals    === 'function' ? renderRituals    : null,
+    agent:      typeof renderAgent      === 'function' ? renderAgent      : null,
     planner:    typeof renderPlanner    === 'function' ? renderPlanner    : null,
     timer:      typeof renderTimer      === 'function' ? renderTimer      : null,
     goals:      typeof renderGoals      === 'function' ? renderGoals      : null,
@@ -125,6 +133,7 @@ function renderPage() {
     journal:    typeof renderJournal    === 'function' ? renderJournal    : null,
     memories:   typeof renderMemories   === 'function' ? renderMemories   : null,
     vault:      typeof renderVault      === 'function' ? renderVault      : null,
+    settings:   typeof renderSettings   === 'function' ? renderSettings   : null,
     analytics:  typeof renderAnalytics  === 'function' ? renderAnalytics  : null,
     ai:         typeof renderAI         === 'function' ? renderAI         : null
   };
@@ -596,6 +605,8 @@ function init() {
   try { setupEvents(); } catch(e) { console.warn('setupEvents error:', e); }
   try { if (typeof initFirebase === 'function') initFirebase(); } catch(e) { console.warn('Firebase error:', e); }
   try { if (typeof initNotifications === 'function') initNotifications(); } catch(e) { console.warn('Notifications error:', e); }
+  try { if (typeof checkStorageOnStart === 'function') checkStorageOnStart(); } catch(e) {}
+  try { if (typeof checkBackupReminder === 'function') checkBackupReminder(); } catch(e) {}
 
   var startPage = (window.AppState && window.AppState.currentPage) || 'dashboard';
   /* Analytics page removed from menu — each module has its own now */
