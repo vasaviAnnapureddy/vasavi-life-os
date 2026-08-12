@@ -26,14 +26,15 @@ function renderMemories() {
   if (!Array.isArray(state.memories)) state.memories = [];
 
   /* ---- VIEW SWITCHER ---- */
-  var view = state.memoriesView || 'book';
+  var view = state.memoriesView || 'diary';
   var vh = '<div class="subtab-bar">';
-  [['book','📕 My Life Book'],['lane','🛤️ Memory Lane'],['analytics','📊 Data Analytics']].forEach(function(t) {
+  [['diary','📅 Daily Diary'],['book','📕 My Life Book'],['lane','🛤️ Memory Lane'],['analytics','📊 Data Analytics']].forEach(function(t) {
     vh += '<div class="subtab ' + (view===t[0]?'active':'') + '" onclick="switchMemoriesView(\'' + t[0] + '\')">' + t[1] + '</div>';
   });
   vh += '</div>';
   if (view === 'analytics') return vh + renderMemoriesAnalytics(state);
   if (view === 'lane')      return vh + renderMemoryLane(state);
+  if (view === 'diary')     return vh + renderDailyDiary(state);
 
   var h = vh;
 
@@ -101,6 +102,244 @@ function renderMemories() {
 
 function setMemoryTag(t) { window.AppState.memoryTag = t; renderPage(); }
 function switchMemoriesView(v) { window.AppState.memoriesView = v; saveData(); renderPage(); }
+
+/* ============================================
+   📅 DAILY DIARY
+   Write today in seconds. Missed days are shown
+   so you can fill them in. Everything saves into
+   Rich Notes → 🪞 My Reflections forever, and can
+   auto-backup into a folder on your laptop.
+   ============================================ */
+function renderDailyDiary(state) {
+  var h = '';
+  var arch = state.reflectionArchive || {};
+  var todayIso = aeTodayIso();
+  var editing = state.diaryEditDate || todayIso;
+  var entry = arch[editing] || {};
+  var isToday = editing === todayIso;
+  var d = new Date(editing);
+
+  /* Streak + counts */
+  var dayMap = {};
+  Object.keys(arch).forEach(function(k){
+    var e = arch[k];
+    if ((e.well||'').trim() || (e.better||'').trim() || (e.tomorrow||'').trim()) dayMap[k] = 1;
+  });
+  var streak = aeStreakFlexible(dayMap, 1);
+  var totalDays = Object.keys(dayMap).length;
+  var wroteToday = !!dayMap[todayIso];
+
+  h += '<div class="grid-3" style="margin-bottom:14px;">';
+  h += '<div class="stat-card" style="--stat-color:#ec4899"><div class="stat-value">🔥 ' + streak + '</div><div class="stat-label">Diary Streak</div><div class="stat-sub">' + (wroteToday?'written today ✓':'not written yet') + '</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#a855f7"><div class="stat-value">' + totalDays + '</div><div class="stat-label">Days Written</div></div>';
+  h += '<div class="stat-card" style="--stat-color:#10b981"><div class="stat-value">' + (window.FS_FOLDER_NAME ? '✓' : '—') + '</div><div class="stat-label">Auto-Backup</div><div class="stat-sub">' + (window.FS_FOLDER_NAME ? escHtml(window.FS_FOLDER_NAME) : 'not connected') + '</div></div>';
+  h += '</div>';
+
+  /* ---- MISSED DAYS CATCH-UP ---- */
+  var missed = [];
+  for (var i = 1; i <= 14; i++) {
+    var dd = new Date(); dd.setDate(dd.getDate() - i);
+    var iso = aeIso(dd);
+    if (!dayMap[iso]) missed.push(iso);
+  }
+  if (missed.length) {
+    h += '<div class="card" style="margin-bottom:14px;border-left:3px solid #f59e0b;">';
+    h += '<div class="card-header">📌 Days You Haven\'t Written (last 2 weeks)</div>';
+    h += '<div style="font-size:11px;color:#8899bb;margin-bottom:8px;">Tap any day to fill it in now — it is never too late.</div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    missed.forEach(function(iso) {
+      var md = new Date(iso);
+      var sel = editing === iso;
+      h += '<div onclick="diaryEditDay(\'' + iso + '\')" style="padding:6px 10px;border-radius:8px;cursor:pointer;font-size:10px;font-weight:700;' +
+        'background:' + (sel?'#f59e0b22':'var(--card2)') + ';border:1px solid ' + (sel?'#f59e0b':'var(--border)') + ';color:' + (sel?'#f59e0b':'#8899bb') + ';">' +
+        md.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}) + '</div>';
+    });
+    h += '</div></div>';
+  } else {
+    h += '<div style="text-align:center;font-size:11px;color:#10b981;margin-bottom:14px;">✨ You have written every day for the last 2 weeks. Beautiful.</div>';
+  }
+
+  /* ---- THE ENTRY ---- */
+  h += '<div class="card" style="margin-bottom:14px;border:1px solid #ec4899;">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+  h += '<div><div style="font-size:13px;font-weight:800;">' + (isToday ? '📅 Today' : '📌 Filling in') + '</div>';
+  h += '<div style="font-size:11px;color:#ec4899;">' + d.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + '</div></div>';
+  if (!isToday) h += '<button class="btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="diaryEditDay(\'' + todayIso + '\')">← Back to Today</button>';
+  h += '</div>';
+
+  h += '<div class="form-row"><label>What happened / what went well?</label>' +
+    '<textarea id="dd-well" rows="3" placeholder="Even a small thing counts...">' + escHtml(entry.well||'') + '</textarea></div>';
+  h += '<div class="form-row"><label>What was hard?</label>' +
+    '<textarea id="dd-better" rows="2" placeholder="Be honest, not harsh...">' + escHtml(entry.better||'') + '</textarea></div>';
+  h += '<div class="form-row"><label>One line for tomorrow</label>' +
+    '<textarea id="dd-tomorrow" rows="2" placeholder="Just one thing...">' + escHtml(entry.tomorrow||'') + '</textarea></div>';
+
+  h += '<label style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8899bb;margin-bottom:10px;cursor:pointer;">' +
+    '<input type="checkbox" id="dd-autosave" ' + (state.diaryAutoBackup!==false?'checked':'') + ' /> ' +
+    'Also back up to my folder when I save</label>';
+
+  h += '<button class="btn-primary" style="width:100%;" onclick="saveDailyDiary(\'' + editing + '\')">💾 Save This Day</button>';
+  h += '<div style="font-size:10px;color:#556080;margin-top:8px;">Saves into Rich Notes → 🪞 My Reflections, dated forever.</div>';
+  h += '</div>';
+
+  /* ---- BACKUP & EXPORT ---- */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">📤 Keep It Safe</div>';
+
+  if (fsSupported()) {
+    if (window.FS_FOLDER_NAME) {
+      h += '<div style="font-size:11px;color:#10b981;margin-bottom:8px;">✅ Auto-saving into <b>' + escHtml(window.FS_FOLDER_NAME) + '</b> on this laptop.</div>';
+      h += '<button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="fsClearHandle().then(function(){renderPage();showToast(\'Folder disconnected\');})">Change Folder</button>';
+    } else {
+      h += '<div style="font-size:11px;color:#8899bb;margin-bottom:8px;line-height:1.7;">Connect a folder once (choose <b>vasavi-life-os\\backups</b>) and every save writes there automatically — no dialogs.</div>';
+      h += '<button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="connectBackupFolder()">📁 Connect My Backup Folder</button>';
+    }
+  } else {
+    h += '<div style="font-size:11px;color:#8899bb;margin-bottom:8px;">On your phone, use Share below — on a laptop (Chrome) you can also connect a folder for automatic saves.</div>';
+  }
+
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+  h += '<button class="btn-ghost" style="flex:1;min-width:130px;" onclick="diaryExportPDF(\'month\')">📄 This Month as PDF</button>';
+  h += '<button class="btn-ghost" style="flex:1;min-width:130px;" onclick="diaryExportPDF(\'all\')">📚 Whole Diary as PDF</button>';
+  h += '</div>';
+  h += '<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="diaryShare()">📤 Share Diary (WhatsApp / Telegram / Drive)</button>';
+  h += '<div style="font-size:10px;color:#556080;margin-top:8px;line-height:1.6;">📄 PDF opens the print window — choose <b>Save as PDF</b>, and you can pick any folder or Google Drive there.</div>';
+  h += '</div>';
+
+  /* ---- RECENT ENTRIES ---- */
+  var isoList = Object.keys(dayMap).sort().reverse().slice(0, 7);
+  if (isoList.length) {
+    h += '<div class="card"><div class="card-header">Recent Days</div>';
+    isoList.forEach(function(iso) {
+      var e = arch[iso], ed = new Date(iso);
+      h += '<div onclick="diaryEditDay(\'' + iso + '\')" style="cursor:pointer;padding:8px 0;border-bottom:1px solid #1a1a35;">';
+      h += '<div style="font-size:11px;font-weight:700;color:#ec4899;">' + ed.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'short'}) + '</div>';
+      h += '<div style="font-size:11px;color:#a0aec0;line-height:1.6;">' + escHtml((e.well||e.better||'').substring(0,110)) + '…</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  return h;
+}
+
+function diaryEditDay(iso) { window.AppState.diaryEditDate = iso; saveData(); renderPage(); }
+
+function saveDailyDiary(iso) {
+  var g = function(id){ var el=document.getElementById(id); return el?el.value.trim():''; };
+  var well = g('dd-well'), better = g('dd-better'), tomorrow = g('dd-tomorrow');
+  if (!well && !better && !tomorrow) { alert('Write at least one line first.'); return; }
+
+  if (!window.AppState.reflectionArchive) window.AppState.reflectionArchive = {};
+  window.AppState.reflectionArchive[iso] = { well:well, better:better, tomorrow:tomorrow, date:iso };
+
+  var auto = document.getElementById('dd-autosave');
+  window.AppState.diaryAutoBackup = auto ? auto.checked : true;
+  window.AppState.diaryEditDate = aeTodayIso();
+  saveData(); renderPage();
+  showToast('💾 Saved to My Reflections — ' + iso);
+
+  /* Auto-backup into the connected folder */
+  if (window.AppState.diaryAutoBackup && typeof fsWriteFile === 'function') {
+    fsWriteFile('life-os-backup-latest.json', JSON.stringify(window.AppState, null, 2))
+      .then(function(ok) {
+        if (ok) {
+          window.AppState.lastBackupIso = aeTodayIso();
+          saveData();
+          showToast('📁 Also backed up to ' + (window.FS_FOLDER_NAME||'your folder'));
+        }
+      });
+  }
+}
+
+/* ---- PDF EXPORT ---- */
+function diaryBuildHTML(scope) {
+  var state = window.AppState;
+  var arch = state.reflectionArchive || {};
+  var now = new Date();
+  var isoList = Object.keys(arch).filter(function(k) {
+    var e = arch[k];
+    if (!((e.well||'').trim() || (e.better||'').trim() || (e.tomorrow||'').trim())) return false;
+    if (scope === 'month') {
+      var d = new Date(k);
+      return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+    }
+    return true;
+  }).sort();
+
+  var title = scope === 'month' ? AE_MONTHS[now.getMonth()] + ' ' + now.getFullYear() : 'My Complete Diary';
+  var c = '<div class="cover"><div class="lbl">THE DIARY OF VASAVI</div><h1>' + title + '</h1>' +
+          '<div class="sub">' + isoList.length + ' days written · exported ' + now.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}) + '</div></div>';
+
+  if (!isoList.length) {
+    c += '<p style="text-align:center;color:#888;margin:40px 0;">No entries yet for this period.</p>';
+  }
+
+  var lastMonth = '';
+  isoList.forEach(function(iso) {
+    var e = arch[iso], d = new Date(iso);
+    var mk = AE_MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+    if (mk !== lastMonth && scope !== 'month') { lastMonth = mk; c += '<h2>' + mk + '</h2>'; }
+    c += '<div class="day"><div class="date">' + d.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + '</div>';
+    if (e.well)     c += '<p><b>What went well:</b> ' + escHtml(e.well).replace(/\n/g,'<br>') + '</p>';
+    if (e.better)   c += '<p><b>What was hard:</b> ' + escHtml(e.better).replace(/\n/g,'<br>') + '</p>';
+    if (e.tomorrow) c += '<p><b>For tomorrow:</b> ' + escHtml(e.tomorrow).replace(/\n/g,'<br>') + '</p>';
+    c += '</div>';
+  });
+  c += '<div class="foot">Vasavi Life OS · your words, kept for life</div>';
+  return { html: c, title: title, count: isoList.length };
+}
+
+function diaryExportPDF(scope) {
+  var built = diaryBuildHTML(scope);
+  var css = 'body{font-family:Georgia,serif;color:#222;max-width:700px;margin:0 auto;padding:30px 24px;}' +
+    '.cover{text-align:center;border-bottom:3px double #ec4899;padding-bottom:22px;margin-bottom:20px;}' +
+    '.lbl{font-size:10px;letter-spacing:3px;color:#ec4899;font-weight:bold;}' +
+    'h1{font-size:38px;margin:10px 0 6px;color:#1a1a2e;} .sub{font-style:italic;color:#777;font-size:12px;}' +
+    'h2{font-size:16px;color:#ec4899;border-bottom:1px solid #eee;padding-bottom:4px;margin-top:26px;}' +
+    '.day{margin:16px 0;page-break-inside:avoid;} .date{font-weight:bold;font-size:13px;color:#7c3aed;}' +
+    '.day p{font-size:12.5px;line-height:1.85;margin:5px 0;}' +
+    '.foot{text-align:center;font-size:10px;color:#aaa;margin-top:36px;border-top:1px solid #eee;padding-top:10px;}' +
+    '@media print{body{padding:0;}}';
+  var w = window.open('', '_blank');
+  if (!w) { showToast('Popup blocked — allow popups to export the PDF.', 'error'); return; }
+  w.document.write('<!DOCTYPE html><html><head><title>' + built.title + ' — Diary</title><style>' + css + '</style></head><body>' +
+    built.html + '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+  w.document.close();
+}
+
+/* ---- SHARE (phone share sheet: WhatsApp / Telegram / Drive / Files) ---- */
+function diaryShare() {
+  var state = window.AppState;
+  var arch = state.reflectionArchive || {};
+  var isoList = Object.keys(arch).sort();
+  if (!isoList.length) { showToast('Nothing written yet to share.', 'error'); return; }
+
+  var text = 'MY DIARY — Vasavi Life OS\n\n';
+  isoList.forEach(function(iso) {
+    var e = arch[iso], d = new Date(iso);
+    var body = [];
+    if (e.well)     body.push('Went well: ' + e.well);
+    if (e.better)   body.push('Was hard: ' + e.better);
+    if (e.tomorrow) body.push('Tomorrow: ' + e.tomorrow);
+    if (!body.length) return;
+    text += '— ' + d.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + ' —\n' + body.join('\n') + '\n\n';
+  });
+
+  var stamp = aeTodayIso();
+  var file;
+  try { file = new File([text], 'my-diary-' + stamp + '.txt', { type:'text/plain' }); } catch(e) {}
+
+  if (file && navigator.canShare && navigator.canShare({ files:[file] })) {
+    navigator.share({ files:[file], title:'My Diary', text:'My diary — ' + stamp })
+      .then(function(){ showToast('📤 Shared! Pick any chat or folder.'); })
+      .catch(function(){});
+  } else if (navigator.share) {
+    navigator.share({ title:'My Diary', text: text.substring(0, 3000) }).catch(function(){});
+  } else {
+    fsSaveSmart('my-diary-' + stamp + '.txt', text, 'text/plain');
+  }
+}
 
 /* ============================================
    🛤️ MEMORY LANE
