@@ -10,7 +10,7 @@
    whether your phone has the newest build.
    Bump this whenever we ship something.
    ============================================ */
-var APP_VERSION = '2026-10-12-a';
+var APP_VERSION = '2026-10-12-b';
 
 /* Force the phone to throw away every cached file
    and load the newest version of the app. */

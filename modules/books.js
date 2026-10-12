@@ -47,6 +47,48 @@ function renderBooks() {
 
   h += '</div>';
 
+  /* ---- AT A GLANCE: what you're reading & what you've finished ---- */
+  var nowReading = books.filter(function(b){ return (b.done||0) > 0 && (!b.total || b.done < b.total); });
+  var doneBooks  = books.filter(function(b){ return b.total > 0 && (b.done||0) >= b.total; });
+  var notStartedB= books.filter(function(b){ return !(b.done||0); });
+  var pagesToday = (state.bookLog || {})[aeTodayIso()] || 0;
+
+  if (books.length > 0) {
+    h += '<div class="card" style="margin-bottom:14px;border-left:3px solid #06b6d4;">';
+    h += '<div class="card-header"><span>📚 At a Glance</span>' +
+      (pagesToday ? '<span style="font-size:11px;color:#10b981;">+' + pagesToday + ' pages today ✓</span>'
+                  : '<span style="font-size:11px;color:#f59e0b;">nothing read today yet</span>') + '</div>';
+
+    h += '<div style="font-size:11px;font-weight:800;color:#06b6d4;margin-bottom:4px;">📖 Currently Reading (' + nowReading.length + ')</div>';
+    if (nowReading.length) {
+      nowReading.forEach(function(b) {
+        var p = b.total > 0 ? pct(b.done||0, b.total) : 0;
+        h += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">' +
+          '<span>' + (b.emoji||'📖') + ' ' + escHtml(b.name) + '</span>' +
+          '<span style="color:#06b6d4;">' + (b.done||0) + (b.total?'/'+b.total+' · '+p+'%':'') + '</span></div>';
+      });
+    } else {
+      h += '<div style="font-size:11px;color:#556080;padding:2px 0 6px;">None in progress — add pages to a book below to start one.</div>';
+    }
+
+    h += '<div style="font-size:11px;font-weight:800;color:#10b981;margin:10px 0 4px;">✅ Finished (' + doneBooks.length + ')</div>';
+    if (doneBooks.length) {
+      doneBooks.forEach(function(b) {
+        h += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">' +
+          '<span>' + (b.emoji||'📖') + ' ' + escHtml(b.name) + '</span>' +
+          '<span style="color:#10b981;">' + b.total + 'p' + (b.finishedOn ? ' · ' + b.finishedOn : '') + '</span></div>';
+      });
+    } else {
+      h += '<div style="font-size:11px;color:#556080;padding:2px 0;">No books finished yet — your first one is coming!</div>';
+    }
+
+    if (notStartedB.length) {
+      h += '<div style="font-size:11px;color:#f59e0b;margin-top:10px;">📕 Not started (' + notStartedB.length + '): ' +
+        notStartedB.map(function(b){ return escHtml(b.name); }).join(', ') + '</div>';
+    }
+    h += '</div>';
+  }
+
   /* ---- ADD BOOK ---- */
   h += '<div class="card" style="margin-bottom:14px;">';
   h += '<div class="card-header">Add Book</div>';
@@ -205,13 +247,33 @@ function renderBooks() {
       h += '<div style="display:flex;flex-direction:column;gap:6px;">';
       if (!isComplete) {
         h += '<button class="btn-ghost btn-small" ' +
-          'onclick="updateBookPages(' + i + ')">Update</button>';
+          'onclick="updateBookPages(' + i + ')">Set total</button>';
       }
       h += '<button class="btn-red btn-small" ' +
         'onclick="deleteBook(' + i + ')">Delete</button>';
       h += '</div>';
 
       h += '</div>';
+
+      /* ---- QUICK DAILY LOG — just add today's pages, no maths ---- */
+      if (!isComplete) {
+        var readToday = ((state.bookLogByBook || {})[book.name] || {})[aeTodayIso()] || 0;
+        h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #1a1a35;">';
+        h += '<div style="font-size:10px;color:#8899bb;margin-bottom:6px;">' +
+          '📖 Read today? Just add the pages — I do the maths.' +
+          (readToday ? ' <span style="color:#10b981;font-weight:700;">(+' + readToday + ' logged today ✓)</span>' : '') + '</div>';
+        h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">';
+        [5, 10, 20, 30].forEach(function(n) {
+          h += '<button class="btn-ghost" style="padding:6px 12px;font-size:11px;" ' +
+            'onclick="addPagesToday(' + i + ',' + n + ')">+' + n + '</button>';
+        });
+        h += '<input type="number" id="bk-custom-' + i + '" placeholder="other" ' +
+          'style="width:72px;padding:6px;font-size:11px;" ' +
+          'onkeydown="if(event.key===\'Enter\')addPagesToday(' + i + ')" />';
+        h += '<button class="btn-primary" style="padding:6px 12px;font-size:11px;" ' +
+          'onclick="addPagesToday(' + i + ')">Add</button>';
+        h += '</div></div>';
+      }
 
       /* Notes section */
       if (book.notes !== undefined) {
@@ -321,6 +383,56 @@ function updateBookPages(idx) {
 }
 
 function switchBooksView(v) { window.AppState.booksView = v; saveData(); renderPage(); }
+
+/* ============================================
+   ➕ ADD TODAY'S PAGES
+   No mental maths — you add what you read today
+   and the total updates itself.
+   ============================================ */
+function addPagesToday(idx, pages) {
+  var state = window.AppState;
+  var book = (state.books || [])[idx];
+  if (!book) return;
+
+  if (pages == null) {
+    var el = document.getElementById('bk-custom-' + idx);
+    pages = parseInt(el ? el.value : 0);
+  }
+  pages = parseInt(pages);
+  if (!pages || pages <= 0) { showToast('Enter how many pages you read.', 'error'); return; }
+
+  var iso = aeTodayIso();
+  var before = book.done || 0;
+  var after  = before + pages;
+  if (book.total > 0 && after > book.total) after = book.total;
+  var actual = after - before;
+  if (actual <= 0) { showToast('📘 You have already finished this book!'); return; }
+
+  book.done = after;
+
+  /* Overall daily reading log (drives the analytics) */
+  if (!state.bookLog) state.bookLog = {};
+  state.bookLog[iso] = (state.bookLog[iso] || 0) + actual;
+
+  /* Per-book daily log, so we can show "+N today" on the card */
+  if (!state.bookLogByBook) state.bookLogByBook = {};
+  if (!state.bookLogByBook[book.name]) state.bookLogByBook[book.name] = {};
+  state.bookLogByBook[book.name][iso] = (state.bookLogByBook[book.name][iso] || 0) + actual;
+
+  var justFinished = false;
+  if (book.total > 0 && book.done >= book.total && !book.finishedOn) {
+    book.finishedOn = iso;
+    justFinished = true;
+  }
+
+  saveData(); renderPage();
+  if (justFinished) {
+    showToast('🎉 You finished "' + book.name + '"! Well done, Vasavi.');
+  } else {
+    var left = book.total > 0 ? (book.total - book.done) : null;
+    showToast('📖 +' + actual + ' pages' + (left !== null ? ' · ' + left + ' to go' : '') + '!');
+  }
+}
 
 /* ============================================
    BOOKS — DATA ANALYTICS
