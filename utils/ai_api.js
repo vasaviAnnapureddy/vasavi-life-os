@@ -77,7 +77,26 @@ function isClaudeKey() {
   return getApiKey().indexOf('sk-ant-') === 0;
 }
 
+/* Added to EVERY system prompt so replies read like
+   normal writing on a phone, not raw markdown with
+   **stars** and | pipes |. */
+var PLAIN_STYLE_RULE =
+  '\n\nHOW TO WRITE YOUR REPLY:\n' +
+  '- Write like a person talking, in short plain sentences.\n' +
+  '- Do NOT use markdown tables, pipes (|), asterisks (**) or hashes (#).\n' +
+  '- For lists, start the line with a dash and keep it short.\n' +
+  '- Put numbers inline in the sentence, e.g. "Rent takes Rs 14,000 of your Rs 10,000 income".\n' +
+  '- This is read on a small phone screen, so keep it tight.';
+
+function applyPlainStyle(systemPrompt) {
+  var p = String(systemPrompt || '');
+  /* The agent asks for strict JSON — never touch that one */
+  if (p.indexOf('JSON') !== -1 || p.indexOf('TOTAL_KCAL') !== -1) return p;
+  return p + PLAIN_STYLE_RULE;
+}
+
 function groqChat(systemPrompt, messages, onDone) {
+  systemPrompt = applyPlainStyle(systemPrompt);
   var key = getApiKey();
   if (!key) { onDone('Please add your API key in AI Assistant! (Groq free key or Claude sk-ant- key)'); return; }
 
@@ -168,6 +187,7 @@ function aiVision(prompt, dataUrl, onDone) {
 
 /* Real Claude — used automatically when key starts with sk-ant- */
 function claudeChat(systemPrompt, messages, onDone) {
+  systemPrompt = applyPlainStyle(systemPrompt);
   var msgs = [];
   messages.forEach(function(m) {
     msgs.push({ role: m.role==='user'?'user':'assistant', content: m.text||m.content||'' });

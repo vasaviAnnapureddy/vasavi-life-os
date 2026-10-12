@@ -20,6 +20,101 @@ function escHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+/* ============================================
+   AI TEXT → CLEAN READABLE TEXT
+   AI models reply in "markdown": **bold**,
+   | tables |, ### headings, - bullets.
+   Shown raw that looks like gibberish.
+   This turns it into proper formatting so it
+   reads like normal writing.
+   ============================================ */
+function renderAIText(raw) {
+  var s = escHtml(String(raw == null ? '' : raw));   /* escape FIRST — safety */
+  var lines = s.split('\n');
+  var out = [];
+  var i = 0;
+
+  var splitRow = function(line) {
+    return line.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|')
+               .map(function(c){ return inlineFmt(c.trim()); });
+  };
+
+  /* bold / italic / code inside a line */
+  function inlineFmt(t) {
+    t = t.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>');
+    t = t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    t = t.replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,!?:;]|$)/g, '$1<i>$2</i>');
+    t = t.replace(/(^|[\s(])_([^_\n]+?)_(?=[\s).,!?:;]|$)/g, '$1<i>$2</i>');
+    t = t.replace(/`([^`]+?)`/g, '<code style="background:#1a1a35;padding:1px 5px;border-radius:4px;font-size:11px;">$1</code>');
+    t = t.replace(/\*\*/g, '').replace(/^\s*\*\s*$/g, '');   /* kill leftovers */
+    return t;
+  }
+
+  while (i < lines.length) {
+    var line = lines[i];
+
+    /* ---- MARKDOWN TABLE ---- */
+    if (/^\s*\|.*\|\s*$/.test(line) &&
+        i + 1 < lines.length && /^\s*\|[\s:\-|]+\|\s*$/.test(lines[i + 1])) {
+      var head = splitRow(line);
+      i += 2;
+      var rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(splitRow(lines[i])); i++; }
+
+      var t = '<div style="margin:8px 0;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+      t += '<tr>' + head.map(function(c) {
+        return '<td style="padding:6px 8px;background:#1a1a35;color:#a855f7;font-weight:800;border:1px solid #2a2a45;">' + c + '</td>';
+      }).join('') + '</tr>';
+      rows.forEach(function(r) {
+        t += '<tr>' + r.map(function(c) {
+          return '<td style="padding:6px 8px;border:1px solid #2a2a45;color:#c4c4d4;">' + c + '</td>';
+        }).join('') + '</tr>';
+      });
+      t += '</table></div>';
+      out.push(t);
+      continue;
+    }
+
+    /* ---- HEADING (# ## ###) ---- */
+    var hm = line.match(/^\s*#{1,6}\s+(.*)$/);
+    if (hm) {
+      out.push('<div style="font-weight:800;color:#a855f7;margin:8px 0 4px;">' + inlineFmt(hm[1]) + '</div>');
+      i++; continue;
+    }
+
+    /* ---- HORIZONTAL RULE ---- */
+    if (/^\s*(\*\s*){3,}$|^\s*(-\s*){3,}$|^\s*(_\s*){3,}$/.test(line)) {
+      out.push('<div style="border-top:1px solid #2a2a45;margin:8px 0;"></div>');
+      i++; continue;
+    }
+
+    /* ---- BULLET ---- */
+    var bm = line.match(/^(\s*)[-*•]\s+(.*)$/);
+    if (bm) {
+      var pad = bm[1].length >= 2 ? 22 : 10;
+      out.push('<div style="padding-left:' + pad + 'px;margin:3px 0;">• ' + inlineFmt(bm[2]) + '</div>');
+      i++; continue;
+    }
+
+    /* ---- NUMBERED ---- */
+    var nm = line.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
+    if (nm) {
+      out.push('<div style="padding-left:10px;margin:3px 0;"><b>' + nm[2] + '.</b> ' + inlineFmt(nm[3]) + '</div>');
+      i++; continue;
+    }
+
+    /* ---- BLANK LINE ---- */
+    if (!line.trim()) { out.push('<div style="height:7px;"></div>'); i++; continue; }
+
+    /* ---- NORMAL LINE ---- */
+    out.push('<div style="margin:2px 0;">' + inlineFmt(line) + '</div>');
+    i++;
+  }
+
+  /* white-space:normal cancels any pre-wrap on the parent bubble */
+  return '<div style="white-space:normal;">' + out.join('') + '</div>';
+}
+
 /* --- FORMAT NUMBER AS INDIAN RUPEES --- */
 function formatRupees(amount) {
   return Number(amount || 0).toLocaleString('en-IN');

@@ -260,7 +260,7 @@ function renderAgent() {
     var L = state.agentLast;
     h += '<div class="card" style="margin-bottom:14px;border-left:3px solid ' + (L.ok?'#10b981':'#f59e0b') + ';">';
     h += '<div style="font-size:11px;color:#556080;margin-bottom:4px;">You said: "' + escHtml(L.command) + '"</div>';
-    h += '<div style="font-size:13px;font-weight:700;color:' + (L.ok?'#10b981':'#f59e0b') + ';line-height:1.7;white-space:pre-wrap;">' + escHtml(L.msg) + '</div>';
+    h += '<div style="font-size:13px;font-weight:700;color:' + (L.ok?'#10b981':'#f59e0b') + ';line-height:1.7;white-space:pre-wrap;">' + renderAIText(L.msg) + '</div>';
     if (L.ok && L.go) {
       h += '<button class="btn-ghost" style="margin-top:8px;font-size:11px;" onclick="goToPage(\'' + L.go + '\')">Open ' + escHtml(PAGE_TITLES[L.go]||L.go) + ' →</button>';
     }

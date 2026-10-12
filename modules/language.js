@@ -604,7 +604,7 @@ function renderChatView(state, langs, chat) {
     var intro = l.name === 'Korean'
       ? '안녕하세요 Vasavi! 😊 I\'m your Korean tutor. Ask me anything!\n\nTry: "Teach me basic greetings" or "How do I say I love you in Korean?" or "Explain verb endings" or "Give me 5 food words with examples"'
       : 'Hi Vasavi! 😊 I\'m your ' + l.name + ' tutor — your friend and teacher.\n\nTry: "What\'s the difference between since and for?" or "Give me 5 interview phrases with examples" or "Correct my sentence: I am going to market yesterday"';
-    h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:12px;font-size:12px;line-height:1.7;white-space:pre-wrap;">' + escHtml(intro) + '</div>';
+    h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:12px;font-size:12px;line-height:1.7;">' + renderAIText(intro) + '</div>';
   } else {
     tutorMsgs.forEach(function(m) {
       if (m.role === 'user') {
@@ -614,7 +614,7 @@ function renderChatView(state, langs, chat) {
       } else {
         h += '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-start;">';
         h += '<span style="font-size:20px;flex-shrink:0;">' + l.flag + '</span>';
-        h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:10px 12px;font-size:12px;line-height:1.8;max-width:88%;white-space:pre-wrap;">' + escHtml(m.text || m.content || '') + '</div>';
+        h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:10px 12px;font-size:12px;line-height:1.8;max-width:88%;">' + renderAIText(m.text || m.content || '') + '</div>';
         h += '</div>';
       }
     });

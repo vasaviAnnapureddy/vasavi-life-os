@@ -377,7 +377,7 @@ function aeAISummary(title, contextText, fallbackText, btnEl, targetElId) {
       '<div class="card" style="margin-top:10px;border-left:3px solid #a855f7;">' +
         '<div class="card-header">🤖 ' + escHtml(title) + '</div>' +
         '<div style="font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' +
-          escHtml(text) +
+          renderAIText(text) +
         '</div>' +
       '</div>';
   };

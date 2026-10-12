@@ -245,7 +245,7 @@ function renderVaultTalk(state) {
       if (m.role === 'user') {
         h += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;"><div style="background:var(--accent);border-radius:10px 0 10px 10px;padding:9px 12px;font-size:12px;line-height:1.7;max-width:82%;color:#fff;white-space:pre-wrap;">' + escHtml(m.text) + '</div></div>';
       } else {
-        h += '<div style="display:flex;gap:8px;margin-bottom:8px;"><span style="font-size:15px;flex-shrink:0;">🤍</span><div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:9px 12px;font-size:12px;line-height:1.8;max-width:88%;white-space:pre-wrap;">' + escHtml(m.text) + '</div></div>';
+        h += '<div style="display:flex;gap:8px;margin-bottom:8px;"><span style="font-size:15px;flex-shrink:0;">🤍</span><div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:9px 12px;font-size:12px;line-height:1.8;max-width:88%;">' + renderAIText(m.text) + '</div></div>';
       }
     });
   }
@@ -553,7 +553,7 @@ function vaultMonthReflect(btn) {
 
   var finish = function(reply) {
     btn.disabled = false;
-    out.innerHTML = '<div style="margin-top:10px;background:#0d0d1a;border-left:3px solid #ec4899;padding:12px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.9;white-space:pre-wrap;color:#a0aec0;">' + escHtml(reply) + '</div>' +
+    out.innerHTML = '<div style="margin-top:10px;background:#0d0d1a;border-left:3px solid #ec4899;padding:12px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.9;color:#a0aec0;">' + renderAIText(reply) + '</div>' +
       '<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="vaultSealReflection(' + v.y + ',' + v.m + ',this)">🔐 Seal this reflection into my diary</button>';
     window._vaultLastReflection = reply;
   };

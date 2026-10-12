@@ -99,7 +99,7 @@ function byteExplainDeeper(btn) {
       'Explain the topic deeper with one Indian real-world example and one interview-style question with its answer. Max 250 words. Be warm and clear.';
     groqChat(sys, [{ role:'user', text:'Topic: ' + byte.t + '\nWhat I already read: ' + byte.b + '\nGo deeper.' }], function(reply) {
       btn.disabled = false;
-      target.innerHTML = '<div style="margin-top:10px;background:#0d0d1a;border-left:3px solid #a855f7;padding:12px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + escHtml(reply) + '</div>';
+      target.innerHTML = '<div style="margin-top:10px;background:#0d0d1a;border-left:3px solid #a855f7;padding:12px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + renderAIText(reply) + '</div>';
     });
   } else {
     target.innerHTML = '<div style="margin-top:10px;font-size:11px;color:#f59e0b;">Add your Groq API key in AI Assistant to unlock deeper AI lessons.</div>';
@@ -454,7 +454,7 @@ function teachGrade(btn) {
   var finish = function(reply) {
     var m = reply.match(/SCORE:\s*(\d+)/i);
     var score = m ? parseInt(m[1]) : null;
-    target.innerHTML = '<div style="margin-top:10px;background:#0d0d1a;border-left:3px solid #f59e0b;padding:12px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + escHtml(reply) + '</div>';
+    target.innerHTML = '<div style="margin-top:10px;background:#0d0d1a;border-left:3px solid #f59e0b;padding:12px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + renderAIText(reply) + '</div>';
     if (!window.AppState.teachLog) window.AppState.teachLog = [];
     window.AppState.teachLog.push({ iso: aeTodayIso(), topic: topic, score: score });
     window.AppState.teachTranscript = '';

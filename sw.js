@@ -15,7 +15,7 @@
      files when online, and a cached copy offline
    ============================================ */
 
-var SW_VERSION = '2026-10-12-b';
+var SW_VERSION = '2026-10-12-c';
 var CACHE_NAME = 'lifeos-' + SW_VERSION;
 
 self.addEventListener('install', function(e) {

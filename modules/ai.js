@@ -50,7 +50,7 @@ function renderAIChat(state) {
       } else {
         h += '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-start;">';
         h += '<div style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">🤖</div>';
-        h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:10px 12px;font-size:12px;line-height:1.7;max-width:88%;white-space:pre-wrap;">' + escHtml(m.content) + '</div>';
+        h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:10px 12px;font-size:12px;line-height:1.7;max-width:88%;">' + renderAIText(m.content) + '</div>';
         h += '</div>';
       }
     });
@@ -298,7 +298,7 @@ function generateAIFullInsight() {
     var resultEl = document.getElementById('ai-insight-result');
     if (resultEl) {
       resultEl.style.display = 'block';
-      resultEl.innerHTML = '<div class="card" style="margin-top:14px;"><div class="card-header">🤖 Full AI Analysis</div><div style="font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + escHtml(reply) + '</div></div>';
+      resultEl.innerHTML = '<div class="card" style="margin-top:14px;"><div class="card-header">🤖 Full AI Analysis</div><div style="font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + renderAIText(reply) + '</div></div>';
     }
   });
 }

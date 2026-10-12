@@ -449,7 +449,7 @@ function renderDietChat(state, p) {
       if (m.role === 'user') {
         h += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;"><div style="background:var(--accent);border-radius:10px 0 10px 10px;padding:9px 12px;font-size:12px;line-height:1.6;max-width:80%;color:#fff;">' + escHtml(m.text) + '</div></div>';
       } else {
-        h += '<div style="display:flex;gap:8px;margin-bottom:8px;"><span style="font-size:16px;flex-shrink:0;">🥗</span><div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:9px 12px;font-size:12px;line-height:1.7;max-width:88%;white-space:pre-wrap;">' + escHtml(m.text) + '</div></div>';
+        h += '<div style="display:flex;gap:8px;margin-bottom:8px;"><span style="font-size:16px;flex-shrink:0;">🥗</span><div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:9px 12px;font-size:12px;line-height:1.7;max-width:88%;">' + renderAIText(m.text) + '</div></div>';
       }
     });
   }

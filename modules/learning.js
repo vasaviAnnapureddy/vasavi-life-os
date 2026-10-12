@@ -243,7 +243,7 @@ function renderTopicView(state, allRoots) {
   if (msgs.length === 0) {
     /* Auto first explanation */
     var intro = getTopicExplanation(topic, root.root, level);
-    h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:12px;font-size:12px;line-height:1.8;white-space:pre-wrap;">' + escHtml(intro) + '</div>';
+    h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:12px;font-size:12px;line-height:1.8;">' + renderAIText(intro) + '</div>';
   } else {
     msgs.forEach(function(m){
       if (m.role === 'user') {
@@ -253,7 +253,7 @@ function renderTopicView(state, allRoots) {
       } else {
         h += '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-start;">';
         h += '<span style="font-size:18px;flex-shrink:0;">🤖</span>';
-        h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:9px 12px;font-size:12px;line-height:1.8;max-width:88%;white-space:pre-wrap;">' + escHtml(m.text) + '</div>';
+        h += '<div style="background:#1a1a35;border-radius:0 10px 10px 10px;padding:9px 12px;font-size:12px;line-height:1.8;max-width:88%;">' + renderAIText(m.text) + '</div>';
         h += '</div>';
       }
     });
@@ -682,7 +682,7 @@ function renderDiscover(state) {
   } else {
     h += '<div style="font-size:10px;color:#a855f7;font-weight:800;margin-bottom:4px;">🎁 TODAY\'S SURPRISE · ' + escHtml(today.domain) + '</div>';
     h += '<div style="font-size:16px;font-weight:900;margin-bottom:10px;">' + escHtml(today.title||'') + '</div>';
-    h += '<div style="font-size:13px;line-height:1.9;color:#c4c4d4;white-space:pre-wrap;margin-bottom:12px;">' + escHtml(today.text||'') + '</div>';
+    h += '<div style="font-size:13px;line-height:1.9;color:#c4c4d4;margin-bottom:12px;">' + renderAIText(today.text||'') + '</div>';
     if (!today.rating) {
       h += '<div style="display:flex;gap:8px;">';
       h += '<button style="flex:1;padding:10px;border-radius:10px;border:2px solid #10b981;background:#001a0d;color:#10b981;cursor:pointer;font-weight:700;" onclick="rateSurprise(1)">👍 Loved it — more like this</button>';
@@ -717,7 +717,7 @@ function renderDiscover(state) {
       h += '<button onclick="deleteCuriosity(' + realIdx + ')" style="background:none;border:none;color:#556080;cursor:pointer;">✕</button>';
       h += '</span></div>';
       if (c.lesson) {
-        h += '<div style="margin-top:8px;background:#0d0d1a;border-left:3px solid #10b981;padding:10px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + escHtml(c.lesson) + '</div>';
+        h += '<div style="margin-top:8px;background:#0d0d1a;border-left:3px solid #10b981;padding:10px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8;white-space:pre-wrap;color:#a0aec0;">' + renderAIText(c.lesson) + '</div>';
       }
       h += '</div>';
     });
