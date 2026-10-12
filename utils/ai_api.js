@@ -8,6 +8,37 @@
 
 var HARDCODED_KEY = ''; /* paste your gsk_... key here */
 
+/* ============================================
+   MODEL NAMES — all in ONE place.
+   Groq retires models every few months. When a
+   model dies you only change it here.
+   Last checked: 12 Oct 2026
+   - llama-3.3-70b-versatile  RETIRED 16 Aug 2026
+   - llama-4-scout (vision)   RETIRED 17 Jul 2026
+   Check: https://console.groq.com/docs/deprecations
+   ============================================ */
+var GROQ_CHAT_MODEL   = 'openai/gpt-oss-120b';   /* text + reasoning */
+var GROQ_VISION_MODEL = 'qwen/qwen3.8-27b';      /* reads photos     */
+var GROQ_STT_MODEL    = 'whisper-large-v3-turbo';/* speech to text   */
+var CLAUDE_MODEL      = 'claude-sonnet-5';
+
+/* If a model ever dies again, this makes the message helpful
+   instead of scary gibberish. */
+function friendlyAIError(msg) {
+  var m = String(msg || '');
+  if (/does not exist|model_not_found|decommission|deprecat/i.test(m)) {
+    return 'That AI model was retired by Groq. Open utils/ai_api.js and update ' +
+           'GROQ_CHAT_MODEL / GROQ_VISION_MODEL from https://console.groq.com/docs/models\n\n(Technical: ' + m + ')';
+  }
+  if (/invalid api key|unauthorized|401/i.test(m)) {
+    return 'Your API key was not accepted. Add a fresh key in AI Assistant.';
+  }
+  if (/rate limit|429/i.test(m)) {
+    return 'Too many requests for now — wait a minute and try again. (Free tier limit.)';
+  }
+  return m;
+}
+
 function getApiKey() {
   return (window.AppState && window.AppState.anthropicKey) || HARDCODED_KEY || '';
 }
@@ -22,7 +53,7 @@ function groqSpeechToText(audioBlob, onDone) {
   var form = new FormData();
   var ext = (audioBlob.type || '').includes('ogg') ? 'ogg' : 'webm';
   form.append('file', audioBlob, 'recording.' + ext);
-  form.append('model', 'whisper-large-v3-turbo');
+  form.append('model', GROQ_STT_MODEL);
   /* No language specified — auto-detect Korean or English */
   form.append('response_format', 'text');
 
@@ -61,7 +92,7 @@ function groqChat(systemPrompt, messages, onDone) {
     method: 'POST',
     headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_CHAT_MODEL,
       max_tokens: 800,
       temperature: 0.8,
       messages: msgs
@@ -70,7 +101,7 @@ function groqChat(systemPrompt, messages, onDone) {
   .then(function(r) { return r.json(); })
   .then(function(data) {
     if (data.choices && data.choices[0]) onDone(data.choices[0].message.content||'');
-    else onDone('Error: '+(data.error&&data.error.message||'unknown'));
+    else onDone(friendlyAIError(data.error&&data.error.message||'unknown error'));
   })
   .catch(function(e) { onDone('Connection error: '+e.message); });
 }
@@ -96,7 +127,7 @@ function aiVision(prompt, dataUrl, onDone) {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5',
+        model: CLAUDE_MODEL,
         max_tokens: 700,
         messages: [{ role:'user', content: [
           { type:'image', source:{ type:'base64', media_type:mediaType, data:parts[1] } },
@@ -107,7 +138,7 @@ function aiVision(prompt, dataUrl, onDone) {
     .then(function(r){ return r.json(); })
     .then(function(data){
       if (data.content && data.content[0]) onDone(data.content[0].text||'');
-      else onDone('Claude error: '+(data.error&&data.error.message||'unknown'));
+      else onDone(friendlyAIError(data.error&&data.error.message||'unknown error'));
     })
     .catch(function(e){ onDone('Connection error: '+e.message); });
     return;
@@ -118,7 +149,7 @@ function aiVision(prompt, dataUrl, onDone) {
     method: 'POST',
     headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
     body: JSON.stringify({
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      model: GROQ_VISION_MODEL,
       max_tokens: 700,
       temperature: 0.3,
       messages: [{ role:'user', content: [
@@ -130,7 +161,7 @@ function aiVision(prompt, dataUrl, onDone) {
   .then(function(r){ return r.json(); })
   .then(function(data){
     if (data.choices && data.choices[0]) onDone(data.choices[0].message.content||'');
-    else onDone('Error: '+(data.error&&data.error.message||'unknown'));
+    else onDone(friendlyAIError(data.error&&data.error.message||'unknown error'));
   })
   .catch(function(e){ onDone('Connection error: '+e.message); });
 }
@@ -152,7 +183,7 @@ function claudeChat(systemPrompt, messages, onDone) {
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-5',
+      model: CLAUDE_MODEL,
       max_tokens: 1024,
       system: systemPrompt,
       messages: msgs
@@ -161,7 +192,7 @@ function claudeChat(systemPrompt, messages, onDone) {
   .then(function(r) { return r.json(); })
   .then(function(data) {
     if (data.content && data.content[0]) onDone(data.content[0].text||'');
-    else onDone('Claude error: '+(data.error&&data.error.message||'unknown'));
+    else onDone(friendlyAIError(data.error&&data.error.message||'unknown error'));
   })
   .catch(function(e) { onDone('Connection error: '+e.message); });
 }

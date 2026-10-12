@@ -244,9 +244,11 @@ function renderFinance() {
           '<span style="color:' + catColor(e.cat) + '">' + escHtml(e.cat) + '</span>' +
         '</div>' +
       '</div>';
-      h += '<div style="display:flex;align-items:center;gap:8px;">' +
+      h += '<div style="display:flex;align-items:center;gap:6px;">' +
         '<span style="font-weight:800;color:#f59e0b;">Rs ' + formatRupees(e.amount) + '</span>' +
-        '<button onclick="deleteExpense(' + realIdx + ')" ' +
+        '<button onclick="editExpense(' + realIdx + ')" title="Edit" ' +
+          'style="background:none;border:none;color:#a855f7;cursor:pointer;font-size:14px;padding:2px 4px;">✏️</button>' +
+        '<button onclick="deleteExpense(' + realIdx + ')" title="Delete" ' +
           'style="background:none;border:none;color:#556080;cursor:pointer;font-size:13px;">✕</button>' +
       '</div>';
       h += '</div>';
@@ -319,9 +321,10 @@ function renderFinanceIncome(state) {
       h += '<div class="expense-row">';
       h += '<div><div style="font-weight:600;font-size:12px;">' + escHtml(e.source||'Income') + '</div>' +
         '<div style="font-size:10px;color:#556080;margin-top:2px;">' + aeIso(new Date(e.date)) + (e.note?' · '+escHtml(e.note):'') + '</div></div>';
-      h += '<div style="display:flex;align-items:center;gap:8px;">' +
+      h += '<div style="display:flex;align-items:center;gap:6px;">' +
         '<span style="font-weight:800;color:#10b981;">+₹' + formatRupees(e.amount) + '</span>' +
-        '<button onclick="deleteIncome(' + realIdx + ')" style="background:none;border:none;color:#556080;cursor:pointer;font-size:13px;">✕</button></div>';
+        '<button onclick="editIncome(' + realIdx + ')" title="Edit" style="background:none;border:none;color:#a855f7;cursor:pointer;font-size:14px;padding:2px 4px;">✏️</button>' +
+        '<button onclick="deleteIncome(' + realIdx + ')" title="Delete" style="background:none;border:none;color:#556080;cursor:pointer;font-size:13px;">✕</button></div>';
       h += '</div>';
     });
   } else {
@@ -549,6 +552,86 @@ function deleteExpense(idx) {
   window.AppState.expenses.splice(idx, 1);
   saveData();
   renderPage();
+}
+
+/* ============================================
+   ✏️ EDIT AN EXPENSE
+   Typed ₹140000 instead of ₹14000? Fix it here
+   instead of deleting and adding it again.
+   ============================================ */
+function editExpense(idx) {
+  var e = (window.AppState.expenses || [])[idx];
+  if (!e) { showToast('Could not find that expense.', 'error'); return; }
+
+  var d   = new Date(e.date);
+  var iso = isNaN(d) ? aeTodayIso() : aeIso(d);
+
+  var catOptions = EXP_CATS.map(function(c) {
+    return '<option value="' + c + '"' + (e.cat === c ? ' selected' : '') + '>' + c + '</option>';
+  }).join('');
+  /* Keep her custom category (e.g. "PG Rent") as an option too */
+  var isCustom = EXP_CATS.indexOf(e.cat) === -1;
+  if (isCustom && e.cat) catOptions = '<option value="' + escHtml(e.cat) + '" selected>' + escHtml(e.cat) + '</option>' + catOptions;
+
+  openModal('✏️ Edit Expense',
+    '<div class="form-row"><label>Amount (Rs)</label>' +
+      '<input type="number" id="ed-amount" value="' + (e.amount || 0) + '" /></div>' +
+    '<div class="form-row"><label>Category</label>' +
+      '<select id="ed-cat">' + catOptions + '</select></div>' +
+    '<div class="form-row"><label>Or type a new category name</label>' +
+      '<input id="ed-cat-custom" placeholder="Leave blank to keep the one above" /></div>' +
+    '<div class="form-row"><label>Date</label>' +
+      '<input type="date" id="ed-date" value="' + iso + '" /></div>' +
+    '<div class="form-row"><label>Note</label>' +
+      '<input id="ed-note" value="' + escHtml(e.note || '') + '" /></div>',
+    function() {
+      var amt = parseFloat((document.getElementById('ed-amount') || {}).value);
+      if (!amt || amt <= 0) { alert('Please enter a valid amount — nothing was changed.'); return; }
+
+      var custom = ((document.getElementById('ed-cat-custom') || {}).value || '').trim();
+      var cat    = custom ? (custom.charAt(0).toUpperCase() + custom.slice(1))
+                          : ((document.getElementById('ed-cat') || {}).value || e.cat);
+
+      var nd = (document.getElementById('ed-date') || {}).value;
+
+      e.amount = amt;
+      e.cat    = cat;
+      if (nd) e.date = new Date(nd).toDateString();
+      e.note   = (document.getElementById('ed-note') || {}).value || '';
+
+      saveData();
+      renderPage();
+      showToast('✏️ Updated to Rs ' + formatRupees(amt) + ' · ' + cat);
+    }
+  );
+}
+
+/* Same for income entries */
+function editIncome(idx) {
+  var e = (window.AppState.income || [])[idx];
+  if (!e) return;
+  var d = new Date(e.date);
+  var iso = isNaN(d) ? aeTodayIso() : aeIso(d);
+  var sources = ['Salary','Stipend','Freelance','Tutoring','Side Hustle','Gift','Cashback','Other'];
+  var opts = sources.map(function(s){ return '<option' + (e.source===s?' selected':'') + '>' + s + '</option>'; }).join('');
+
+  openModal('✏️ Edit Income',
+    '<div class="form-row"><label>Amount (Rs)</label><input type="number" id="ei-amount" value="' + (e.amount||0) + '" /></div>' +
+    '<div class="form-row"><label>Source</label><select id="ei-source">' + opts + '</select></div>' +
+    '<div class="form-row"><label>Date</label><input type="date" id="ei-date" value="' + iso + '" /></div>' +
+    '<div class="form-row"><label>Note</label><input id="ei-note" value="' + escHtml(e.note||'') + '" /></div>',
+    function() {
+      var amt = parseFloat((document.getElementById('ei-amount')||{}).value);
+      if (!amt || amt <= 0) { alert('Please enter a valid amount — nothing was changed.'); return; }
+      e.amount = amt;
+      e.source = (document.getElementById('ei-source')||{}).value || e.source;
+      var nd = (document.getElementById('ei-date')||{}).value;
+      if (nd) e.date = new Date(nd).toDateString();
+      e.note = (document.getElementById('ei-note')||{}).value || '';
+      saveData(); renderPage();
+      showToast('✏️ Income updated to Rs ' + formatRupees(amt));
+    }
+  );
 }
 
 function switchFinanceView(v) { window.AppState.financeView = v; saveData(); renderPage(); }

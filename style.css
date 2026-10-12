@@ -923,3 +923,41 @@ label {
 [contenteditable] h2 { font-size: 18px; margin: 8px 0 4px; }
 [contenteditable] h3 { font-size: 15px; margin: 6px 0 3px; }
 [contenteditable] ul, [contenteditable] ol { padding-left: 22px; margin: 4px 0; }
+
+/* ============================================
+   DATE & TIME INPUTS — make the calendar icon
+   visible on the dark theme. By default the
+   browser draws a BLACK calendar icon which
+   disappears against the dark card background.
+   ============================================ */
+input[type="date"],
+input[type="time"],
+input[type="month"],
+input[type="datetime-local"] {
+  color-scheme: dark;              /* native picker follows dark theme */
+  position: relative;
+  cursor: pointer;
+}
+
+/* Brighten the little calendar button itself */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(72%) sepia(60%) saturate(600%) hue-rotate(230deg) brightness(115%);
+  opacity: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  background: rgba(168, 85, 247, 0.25);
+}
+
+/* Hint text under date fields */
+.date-hint {
+  font-size: 10px;
+  color: #a855f7;
+  margin-top: 3px;
+}

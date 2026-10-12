@@ -86,8 +86,8 @@ function fireNotification(title, body, icon) {
   try {
     var n = new Notification(title, {
       body:  body,
-      icon:  icon || '/icon-192.png',
-      badge: '/icon-192.png',
+      icon:  icon || 'icon.svg',
+      badge: 'icon.svg',
       tag:   title,
       requireInteraction: false
     });

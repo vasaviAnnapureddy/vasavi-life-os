@@ -5,6 +5,39 @@
    ============================================ */
 
 /* ============================================
+   APP VERSION
+   Shown in the sidebar so you can always tell
+   whether your phone has the newest build.
+   Bump this whenever we ship something.
+   ============================================ */
+var APP_VERSION = '2026-10-12-a';
+
+/* Force the phone to throw away every cached file
+   and load the newest version of the app. */
+function forceAppUpdate() {
+  showToast('⏳ Getting the newest version...');
+  var done = function() {
+    setTimeout(function() {
+      window.location.href = window.location.pathname + '?u=' + Date.now();
+    }, 600);
+  };
+  try {
+    var jobs = [];
+    if (window.caches && caches.keys) {
+      jobs.push(caches.keys().then(function(keys) {
+        return Promise.all(keys.map(function(k){ return caches.delete(k); }));
+      }));
+    }
+    if ('serviceWorker' in navigator) {
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function(regs) {
+        return Promise.all(regs.map(function(r){ return r.unregister(); }));
+      }));
+    }
+    Promise.all(jobs).then(done).catch(done);
+  } catch(e) { done(); }
+}
+
+/* ============================================
    PAGE CONFIG
    ============================================ */
 var PAGE_TITLES = {
@@ -590,6 +623,9 @@ function setupDayDisplay() {
     }
     saveData();
   }
+
+  var verEl = document.getElementById('app-version');
+  if (verEl) verEl.textContent = APP_VERSION;
 
   document.getElementById('day-number').textContent = state.dayNumber || 1;
   document.getElementById('today-date').textContent =

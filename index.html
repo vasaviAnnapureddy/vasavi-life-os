@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vasavi's Life OS</title>
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=15" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#7c3aed" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -78,7 +78,11 @@
     <div class="nav-item" data-page="ai">AI Assistant</div>
     <div class="nav-item" data-page="settings">⚙️ Settings &amp; Backup</div>
 
-    <div class="sidebar-footer">Built for Vasavi</div>
+    <div class="sidebar-footer">
+      Built for Vasavi<br>
+      <span style="font-size:9px;color:#556080;">v<span id="app-version">…</span></span><br>
+      <span onclick="forceAppUpdate()" style="font-size:10px;color:#a855f7;cursor:pointer;text-decoration:underline;">🔄 Update App</span>
+    </div>
   </div>
 
   <!-- MAIN AREA -->
@@ -123,11 +127,11 @@
   <script src="utils/helpers.js?v=6"></script>
   <script src="utils/filesystem.js?v=1"></script>
   <script src="utils/analytics_engine.js?v=11"></script>
-  <script src="utils/notifications.js?v=6"></script>
+  <script src="utils/notifications.js?v=15"></script>
   <script src="utils/storage.js?v=12"></script>
   <script src="utils/reminder_engine.js?v=6"></script>
   <script src="firebase-config.js?v=12"></script>
-  <script src="utils/ai_api.js?v=9"></script>
+  <script src="utils/ai_api.js?v=15"></script>
   <script src="utils/speech.js?v=5"></script>
 
   <!-- LOAD DATA FILES -->
@@ -155,12 +159,12 @@
   <script src="modules/project.js"></script>
   <script src="modules/learning.js?v=2"></script>
   <script src="modules/language.js?v=8"></script>
-  <script src="modules/books.js?v=10"></script>
+  <script src="modules/books.js?v=15"></script>
   <script src="modules/habits.js?v=13"></script>
   <script src="modules/gym.js?v=10"></script>
   <script src="modules/diet.js?v=1"></script>
   <script src="modules/brain.js?v=2"></script>
-  <script src="modules/finance.js?v=8"></script>
+  <script src="modules/finance.js?v=15"></script>
   <script src="modules/savings.js"></script>
   <script src="modules/jobs.js?v=8"></script>
   <script src="modules/resume.js"></script>
@@ -217,7 +221,7 @@
   </script>
 
   <!-- LOAD CORE APP LAST -->
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 
 </body>
 </html>

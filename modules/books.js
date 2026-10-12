@@ -406,9 +406,36 @@ function renderBooksAnalytics(state) {
   } else {
     h += '<div style="font-size:11px;color:#556080;text-align:center;padding:10px;">No books finished yet — the first one is coming!</div>';
   }
+  h += '</div>';
+
+  /* Not started yet — these used to be nearly invisible */
   if (notStarted.length) {
-    h += '<div style="font-size:11px;color:#f59e0b;margin-top:10px;">📕 ' + notStarted.length + ' book' + (notStarted.length>1?'s':'') + ' not started yet: ' +
-      notStarted.slice(0,4).map(function(b){ return escHtml(b.name); }).join(', ') + (notStarted.length>4?'…':'') + '</div>';
+    h += '<div class="card" style="margin-bottom:14px;border-left:3px solid #f59e0b;">';
+    h += '<div class="card-header">📕 Not Started Yet (' + notStarted.length + ')</div>';
+    notStarted.forEach(function(b) {
+      var realIdx = books.indexOf(b);
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1a1a35;">';
+      h += '<span style="font-size:12px;">' + (b.emoji||'📖') + ' ' + escHtml(b.name) +
+        (b.author?' <span style="color:#556080;">— '+escHtml(b.author)+'</span>':'') + '</span>';
+      h += '<button class="btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="updateBookPages(' + realIdx + ')">+ Log Pages</button>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  /* Safety net: every single book, always visible */
+  h += '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header">📚 All My Books (' + books.length + ')</div>';
+  if (books.length === 0) {
+    h += '<div style="font-size:11px;color:#556080;text-align:center;padding:10px;">No books added yet. Go to <b>My Books</b> and add one!</div>';
+  } else {
+    books.forEach(function(b, i) {
+      var p = b.total > 0 ? pct(b.done||0, b.total) : 0;
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1a1a35;font-size:11px;">';
+      h += '<span>' + (b.emoji||'📖') + ' ' + escHtml(b.name) + '</span>';
+      h += '<span style="color:#06b6d4;">' + (b.done||0) + (b.total>0 ? '/'+b.total+' ('+p+'%)' : ' pages') + '</span>';
+      h += '</div>';
+    });
   }
   h += '</div>';
 
