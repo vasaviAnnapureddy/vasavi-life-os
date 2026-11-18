@@ -10,7 +10,7 @@
    whether your phone has the newest build.
    Bump this whenever we ship something.
    ============================================ */
-var APP_VERSION = '2026-11-18-safe';
+var APP_VERSION = '2026-11-18-rescue';
 
 /* Force the phone to throw away every cached file
    and load the newest version of the app. */

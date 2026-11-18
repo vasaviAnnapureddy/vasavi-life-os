@@ -147,6 +147,14 @@ document.addEventListener('DOMContentLoaded', function() {
   document.addEventListener('touchstart', function(){ window.ALLOW_EMPTY_SYNC = true; }, { once: true });
 });
 
+function _sizeOf(v) {
+  if (v === null || v === undefined) return 0;
+  if (Array.isArray(v)) return v.length;
+  if (typeof v === 'object') return Object.keys(v).length;
+  if (typeof v === 'string') return v.length ? 1 : 0;
+  return 1;
+}
+
 function _isEmptyValue(v) {
   if (v === null || v === undefined) return true;
   if (Array.isArray(v)) return v.length === 0;
@@ -285,6 +293,16 @@ function forceFullSync() {
    LOAD FROM FIREBASE — on first load
    ============================================ */
 function syncFromFirebase() {
+  /* RESCUE MODE: open the app with ?nosync=1 to stop the cloud
+     touching this device, so you can back up what is on it. */
+  if (location.search.indexOf('nosync') !== -1) {
+    SYNC_STATE = 'failed';          /* also blocks uploading */
+    console.warn('🛟 RESCUE MODE: cloud sync is OFF. Nothing will be downloaded or uploaded.');
+    setTimeout(function() {
+      if (typeof showToast === 'function') showToast('🛟 Rescue mode: sync OFF. Your device data is safe. Back it up now.');
+    }, 1500);
+    return;
+  }
   if (!FB_READY || !firebaseDb || !currentUser) return;
   var uid = currentUser.uid;
 
@@ -365,9 +383,34 @@ function syncFromFirebase() {
       /* Junk keys created by an earlier sync bug */
       delete merged.v; delete merged.t; delete merged.parts;
       delete window.AppState.v; delete window.AppState.t; delete window.AppState.parts;
+      /* ============================================
+         GUARD 3: THE CLOUD MUST NEVER SHRINK YOUR
+         DEVICE DATA.
+         If this device holds MORE records than the
+         cloud (for example a laptop that still has
+         October entries the cloud lost), we keep the
+         device copy and upload it instead.
+         ============================================ */
+      var keptLocal = [];
       Object.keys(merged).forEach(function(k) {
-        if (merged[k] !== undefined) window.AppState[k] = merged[k];
+        if (merged[k] === undefined) return;
+        var cloudSize = _sizeOf(merged[k]);
+        var localSize = _sizeOf(window.AppState[k]);
+        if (localSize > cloudSize) {
+          keptLocal.push(k + ' (this device ' + localSize + ', cloud ' + cloudSize + ')');
+          return;                                   /* keep the richer local copy */
+        }
+        window.AppState[k] = merged[k];
       });
+      if (keptLocal.length) {
+        console.warn('🛡️ Kept this device\'s bigger copy for: ' + keptLocal.join(', '));
+        window._fbKeptLocal = keptLocal;
+        setTimeout(function() {
+          if (typeof showToast === 'function') {
+            showToast('🛡️ This device had more data than the cloud. Kept yours. Back it up now!', 'error');
+          }
+        }, 1500);
+      }
 
       /* Seed the change-tracker so we don't immediately re-upload everything */
       Object.keys(merged).forEach(function(k) {
