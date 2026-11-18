@@ -115,13 +115,45 @@ var SYNC_SKIP = [
   'memoriesView','plannerView','goalTab','goalSubTab','aiTab','learnTab','gymTab',
   'gymEditDay','gymViewDay','dietTab','brainTab','analyticsTab','notesOpenDoc',
   'notesEntryOpen','notesEntryEditing','aeView','langTab','jobsTab','vaultMood',
-  'memoryTag','rescueRevealed','rescueGuess','langActiveChat','financeAnalyticsTab'
+  'memoryTag','rescueRevealed','rescueGuess','langActiveChat','financeAnalyticsTab',
+  'v','t','parts'   /* junk keys from an old sync bug */
 ];
 
 var FB_MAX_BYTES  = 700000;   /* safety margin under Firestore's 1 MiB */
 var _fbLastSynced = {};       /* key -> JSON string of last upload */
 var _fbTimer      = null;
 var _fbPending    = null;
+
+/* ============================================
+   ⛔ DATA-LOSS GUARD
+   The old code could upload an EMPTY app over
+   good cloud data: if the phone opened with no
+   local data (storage cleared / new device) and
+   the download was slower than 2 seconds, the
+   empty state was pushed up first and wiped the
+   cloud copy.
+
+   Now nothing uploads until the download has
+   finished, and empty values can never replace
+   data that already exists in the cloud.
+   ============================================ */
+var SYNC_STATE = 'pending';   /* pending -> done | failed */
+
+/* The dangerous moment is app startup, before you have touched
+   anything. Once you actually tap something you are in control,
+   so real deletes are allowed through. */
+document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('click', function(){ window.ALLOW_EMPTY_SYNC = true; }, { once: true });
+  document.addEventListener('touchstart', function(){ window.ALLOW_EMPTY_SYNC = true; }, { once: true });
+});
+
+function _isEmptyValue(v) {
+  if (v === null || v === undefined) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === 'object') return Object.keys(v).length === 0;
+  if (typeof v === 'string') return v.trim() === '';
+  return false;
+}
 
 function saveToFirebase(state) {
   if (!FB_READY || !firebaseDb || !currentUser) return;
@@ -132,9 +164,19 @@ function saveToFirebase(state) {
 
 function _fbFlush(state) {
   if (!state || !FB_READY || !firebaseDb || !currentUser) return;
+
+  /* GUARD 1: never upload before the cloud copy has been read */
+  if (SYNC_STATE === 'pending') {
+    console.warn('⛔ Upload blocked: still loading your data from the cloud.');
+    clearTimeout(_fbTimer);
+    _fbTimer = setTimeout(function(){ _fbFlush(_fbPending); }, 1500);   /* retry later */
+    return;
+  }
+
   var uid = currentUser.uid;
   var ref = firebaseDb.collection('users').doc(uid).collection('data');
   var changed = 0;
+  var blocked = 0;
 
   Object.keys(state).forEach(function(key) {
     if (SYNC_SKIP.indexOf(key) !== -1) return;
@@ -146,6 +188,16 @@ function _fbFlush(state) {
     try { json = JSON.stringify(val); } catch(e) { return; }
     if (json === undefined) return;
     if (_fbLastSynced[key] === json) return;   /* unchanged — skip the write */
+
+    /* GUARD 2: an empty value must never replace real cloud data.
+       Deleting things on purpose still works, because the delete
+       buttons set window.ALLOW_EMPTY_SYNC first. */
+    var hadData = _fbLastSynced[key] && !_isEmptyValue(JSON.parse(_fbLastSynced[key] || 'null'));
+    if (_isEmptyValue(val) && hadData && !window.ALLOW_EMPTY_SYNC) {
+      console.warn('⛔ Refused to wipe "' + key + '" in the cloud with an empty value.');
+      blocked++;
+      return;
+    }
 
     _fbLastSynced[key] = json;
     changed++;
@@ -166,6 +218,9 @@ function _fbFlush(state) {
   });
 
   if (changed > 0) console.log('☁️ Synced ' + changed + ' changed section(s) to Firebase');
+  if (blocked > 0 && typeof showToast === 'function') {
+    showToast('🛡️ Protected ' + blocked + ' section(s) from being wiped.', 'error');
+  }
 }
 
 /* ============================================
@@ -237,6 +292,7 @@ function syncFromFirebase() {
     .collection('data').get()
     .then(function(snapshot) {
       if (snapshot.empty) {
+        SYNC_STATE = 'done';
         console.log('No Firebase data yet — localStorage is source of truth');
         return;
       }
@@ -278,8 +334,37 @@ function syncFromFirebase() {
         catch(e) { console.warn('Could not rebuild "' + key + '" from parts:', e.message); }
       });
 
-      /* Legacy first, then modern wins (modern is the current format) */
-      var merged = Object.assign({}, legacy, modern);
+      /* ============================================
+         MERGE WITH RESCUE
+         Modern docs normally win. BUT if a modern
+         doc is EMPTY and the old legacy doc still
+         holds real data, the legacy data wins.
+         This is what brings back habits, expenses
+         and notes after the empty-overwrite bug.
+         ============================================ */
+      var merged = Object.assign({}, legacy);
+      var rescued = [];
+      Object.keys(modern).forEach(function(k) {
+        var mv = modern[k];
+        if (_isEmptyValue(mv) && !_isEmptyValue(legacy[k])) {
+          rescued.push(k + ' (' + (Array.isArray(legacy[k]) ? legacy[k].length : Object.keys(legacy[k]).length) + ')');
+          return;                       /* keep the older, real data */
+        }
+        merged[k] = mv;
+      });
+      if (rescued.length) {
+        console.log('🛟 Rescued from the old backup copy: ' + rescued.join(', '));
+        window._fbRescued = rescued;
+        setTimeout(function() {
+          if (typeof showToast === 'function') {
+            showToast('🛟 Recovered your ' + rescued.length + ' missing sections!');
+          }
+        }, 1200);
+      }
+
+      /* Junk keys created by an earlier sync bug */
+      delete merged.v; delete merged.t; delete merged.parts;
+      delete window.AppState.v; delete window.AppState.t; delete window.AppState.parts;
       Object.keys(merged).forEach(function(k) {
         if (merged[k] !== undefined) window.AppState[k] = merged[k];
       });
@@ -292,10 +377,14 @@ function syncFromFirebase() {
       /* Persist the cloud copy locally too */
       try { localStorage.setItem('vasavi_life_os_v2', JSON.stringify(window.AppState)); } catch(e) {}
 
+      SYNC_STATE = 'done';   /* uploads are safe from here on */
       console.log('☁️ Firebase sync complete — ' + Object.keys(merged).length + ' sections loaded from cloud');
       if (typeof renderPage === 'function') renderPage();
     })
-    .catch(function(e) { console.warn('Firebase load error:', e.message); });
+    .catch(function(e) {
+      SYNC_STATE = 'failed';   /* allow local work, but never auto-wipe */
+      console.warn('Firebase load error:', e.message);
+    });
 }
 
 /* ============================================
