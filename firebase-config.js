@@ -282,6 +282,114 @@ function signOutGoogle() {
   });
 }
 
+/* ============================================
+   🕰️ TIME MACHINE — automatic daily backup
+
+   Once a day the app saves a DATED snapshot of
+   everything into its own document. These
+   snapshots are never touched by normal syncing,
+   so if live data is ever lost you can pick a day
+   and get everything back in one tap.
+
+   Keeps the last 21 days. Tiny: your whole app is
+   only a few KB of text.
+   ============================================ */
+var BACKUP_KEEP_DAYS = 21;
+
+function autoDailyBackup() {
+  if (!FB_READY || !firebaseDb || !currentUser) return;
+  if (SYNC_STATE !== 'done') return;        /* never snapshot before data loads */
+
+  var today = aeTodayIso();
+  var state = window.AppState || {};
+
+  /* Do not save an empty app over a day that had real data */
+  var realRecords = (state.habits||[]).length + (state.expenses||[]).length +
+                    (state.sessions||[]).length + Object.keys(state.reflectionArchive||{}).length;
+  if (realRecords === 0) {
+    console.warn('🕰️ Skipped daily backup: nothing to save yet.');
+    return;
+  }
+
+  var ref = firebaseDb.collection('users').doc(currentUser.uid).collection('backups');
+
+  ref.doc(today).get().then(function(doc) {
+    if (doc.exists) return;                 /* already saved today */
+
+    var copy = {};
+    Object.keys(state).forEach(function(k) {
+      if (SYNC_SKIP.indexOf(k) !== -1) return;
+      copy[k] = state[k];
+    });
+
+    var json;
+    try { json = JSON.stringify(copy); } catch(e) { return; }
+
+    /* Stay under Firestore's 1 MiB document limit */
+    if (json.length > 800000) {
+      delete copy.notesData;                /* images are the only heavy thing */
+      try { json = JSON.stringify(copy); } catch(e) { return; }
+      if (json.length > 800000) { console.warn('🕰️ Backup too large, skipped.'); return; }
+    }
+
+    return ref.doc(today).set({
+      date: today,
+      created: Date.now(),
+      records: realRecords,
+      data: json                            /* stored as text, so nothing is reshaped */
+    }).then(function() {
+      console.log('🕰️ Daily backup saved for ' + today + ' (' + realRecords + ' records)');
+      pruneOldBackups();
+    });
+  }).catch(function(e) { console.warn('Daily backup failed:', e.message); });
+}
+
+function pruneOldBackups() {
+  var cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - BACKUP_KEEP_DAYS);
+  var cutIso = aeIso(cutoff);
+  firebaseDb.collection('users').doc(currentUser.uid).collection('backups').get()
+    .then(function(snap) {
+      snap.forEach(function(d) { if (d.id < cutIso) d.ref.delete(); });
+    }).catch(function(){});
+}
+
+/* List the days you can go back to */
+function listDailyBackups() {
+  if (!FB_READY || !firebaseDb || !currentUser) return Promise.resolve([]);
+  return firebaseDb.collection('users').doc(currentUser.uid).collection('backups').get()
+    .then(function(snap) {
+      var out = [];
+      snap.forEach(function(d) {
+        var v = d.data() || {};
+        out.push({ date: d.id, records: v.records || 0, size: (v.data||'').length });
+      });
+      return out.sort(function(a,b){ return b.date.localeCompare(a.date); });
+    }).catch(function(){ return []; });
+}
+
+/* Bring a day back */
+function restoreDailyBackup(date) {
+  if (!FB_READY || !firebaseDb || !currentUser) return;
+  if (!confirm('Restore everything from ' + date + '?\n\nYour current data will be replaced by that day\'s copy.')) return;
+
+  firebaseDb.collection('users').doc(currentUser.uid).collection('backups').doc(date).get()
+    .then(function(doc) {
+      if (!doc.exists) { showToast('That backup is missing.', 'error'); return; }
+      var raw = (doc.data() || {}).data;
+      var restored;
+      try { restored = JSON.parse(raw); } catch(e) { showToast('That backup is damaged.', 'error'); return; }
+
+      window.AppState = Object.assign({}, DEFAULT_STATE, restored);
+      try { localStorage.setItem('vasavi_life_os_v2', JSON.stringify(window.AppState)); } catch(e) {}
+      window.ALLOW_EMPTY_SYNC = true;       /* this restore is deliberate */
+      forceFullSync();
+      if (typeof renderPage === 'function') renderPage();
+      showToast('🕰️ Restored everything from ' + date + '!');
+    })
+    .catch(function(e) { showToast('Restore failed: ' + e.message, 'error'); });
+}
+
 /* Force a full re-upload (used after restoring a backup) */
 function forceFullSync() {
   _fbLastSynced = {};
@@ -421,6 +529,7 @@ function syncFromFirebase() {
       try { localStorage.setItem('vasavi_life_os_v2', JSON.stringify(window.AppState)); } catch(e) {}
 
       SYNC_STATE = 'done';   /* uploads are safe from here on */
+      setTimeout(autoDailyBackup, 3000);   /* today's safety copy */
       console.log('☁️ Firebase sync complete — ' + Object.keys(merged).length + ' sections loaded from cloud');
       if (typeof renderPage === 'function') renderPage();
     })

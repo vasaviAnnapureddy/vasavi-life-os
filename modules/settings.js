@@ -84,6 +84,15 @@ function renderSettingsData(state) {
     'On Telegram pick <b>Saved Messages</b>. The file then lives in that chat forever and can be re-downloaded anytime.</div>';
   h += '</div>';
 
+  /* Time Machine */
+  h += '<div class="card" style="margin-bottom:14px;border:1px solid #10b981;">';
+  h += '<div class="card-header">🕰️ Time Machine (automatic)</div>';
+  h += '<div style="font-size:11px;color:#8899bb;margin-bottom:10px;line-height:1.7;">'
+    + 'Every day the app quietly saves a dated copy of everything. If anything ever goes wrong, pick a day and get it all back in one tap. Nothing for you to remember.</div>';
+  h += '<div id="tm-list" style="font-size:11px;color:#556080;">Loading your saved days...</div>';
+  h += '<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="loadTimeMachine()">🔄 Refresh list</button>';
+  h += '</div>';
+
   /* Restore */
   h += '<div class="card" style="margin-bottom:14px;">';
   h += '<div class="card-header">♻️ Restore From a Backup</div>';
@@ -186,6 +195,30 @@ function saveBackupToFolder(encrypted) {
 }
 
 /* Share the backup file directly to any app (WhatsApp, Telegram, Files…) */
+function loadTimeMachine() {
+  var el = document.getElementById('tm-list');
+  if (!el) return;
+  if (typeof listDailyBackups !== 'function') { el.textContent = 'Not available.'; return; }
+  el.textContent = 'Loading your saved days...';
+  listDailyBackups().then(function(list) {
+    var box = document.getElementById('tm-list');
+    if (!box) return;
+    if (!list.length) { box.innerHTML = '<span style="color:#f59e0b;">No daily copies yet. The first one saves automatically today.</span>'; return; }
+    var out = '';
+    list.forEach(function(b) {
+      var d = new Date(b.date);
+      out += '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1a1a35;">'
+        + '<span style="font-size:12px;">' + d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'})
+        + ' <span style="color:#556080;font-size:10px;">' + b.records + ' records</span></span>'
+        + '<button class="btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="restoreDailyBackup(&quot;' + b.date + '&quot;)">Restore</button></div>';
+    });
+    box.innerHTML = out;
+  });
+}
+
+/* load the list as soon as the Backup tab opens */
+setTimeout(function(){ if (document.getElementById('tm-list')) loadTimeMachine(); }, 400);
+
 function shareBackupFile() {
   try {
     var data = JSON.stringify(window.AppState, null, 2);

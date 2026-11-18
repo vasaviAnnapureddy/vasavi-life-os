@@ -15,7 +15,7 @@
      files when online, and a cached copy offline
    ============================================ */
 
-var SW_VERSION = '2026-11-18-rescue';
+var SW_VERSION = '2026-11-18-timemachine';
 var CACHE_NAME = 'lifeos-' + SW_VERSION;
 
 self.addEventListener('install', function(e) {
